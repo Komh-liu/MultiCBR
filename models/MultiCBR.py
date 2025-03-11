@@ -116,6 +116,9 @@ class MultiCBR(nn.Module):
         self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
         self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
 
+        self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
+        self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 不知道是否需要转置
+        
         # 如果增强类型是 MD，初始化模态丢弃层
         if self.conf['aug_type'] == 'MD':
             self.init_md_dropouts()
@@ -243,7 +246,7 @@ class MultiCBR(nn.Module):
         # 将处理后的二分图转换为张量并移动到指定设备
         return to_tensor(bipartite_graph).to(device)
 
-    # 进行图的传播操作
+    # 进行图的传播操作 ？二级嵌入
     def propagate(self, graph, A_feature, B_feature, graph_type, layer_coef, test):
         # 将 A 特征和 B 特征拼接在一起
         features = torch.cat((A_feature, B_feature), 0)
@@ -253,7 +256,7 @@ class MultiCBR(nn.Module):
         # 进行多层传播
         for i in range(self.num_layers):
             # 通过图卷积更新特征
-            features = torch.spmm(graph, features)
+            features = torch.spmm(graph, features) ## 稀疏矩阵和密集矩阵乘法 交互稀疏矩阵和第一级嵌入(torch)
             # 如果增强类型是 MD 且不在测试阶段
             if self.conf["aug_type"] == "MD" and not test:
                 # 获取对应的丢弃层
@@ -281,7 +284,7 @@ class MultiCBR(nn.Module):
 
         return A_feature, B_feature
 
-    # 进行图的聚合操作
+    # 进行图的聚合操作 ## indirect
     def aggregate(self, agg_graph, node_feature, graph_type, test):
         # 通过矩阵乘法进行聚合操作
         aggregated_feature = torch.matmul(agg_graph, node_feature)
@@ -350,11 +353,24 @@ class MultiCBR(nn.Module):
             # 训练阶段使用带丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph, BI_items_feature, "UI", test)
 
+        # 添加二次传播
+        UI_users_feature_agg = self.aggregate(self.UB_aggregation_graph, UB_bundles_feature, "UI", test)
+        BI_bundles_feature_agg = self.aggregate(self.BU_aggregation_graph, BI_users_feature, "BI", test)
+        # 更新需要修改的嵌入
+        users_feature_plus_agg = (UI_users_feature_agg + UI_users_feature)/2
+        bundles_feature_plus_agg = (BI_bundles_feature_agg + BI_bundles_feature)/2
+        # UI_users_feature = torch.sum(users_feature_plus_agg * , dim=0)
+        # bundles_rep = torch.sum(bundles_feature * self.modal_coefs, dim=0)
+        
         # 收集三种图传播得到的用户特征
-        users_feature = [UB_users_feature, UI_users_feature, BI_users_feature]
+        users_feature = [UB_users_feature, users_feature_plus_agg , BI_users_feature] 
         # 收集三种图传播得到的捆绑包特征
-        bundles_feature = [UB_bundles_feature, UI_bundles_feature, BI_bundles_feature]
-
+        bundles_feature = [UB_bundles_feature, bundles_feature_plus_agg , UI_bundles_feature]
+        ##Test 1 [UB_users_feature, UI_users_feature, UI_users_feature_agg] &[UB_bundles_feature, BI_bundles_feature,BI_bundles_feature_agg]
+        ##Tets 2 [UB_users_feature, UI_users_feature_agg, BI_users_feature] &[UB_bundles_feature, BI_bundles_feature_agg,UI_bundles_feature] 不咋行
+        ##Test 3 users_feature_plus_agg = (UI_users_feature_agg + UI_users_feature)/2 &  [UB_users_feature, users_feature_plus_agg , BI_users_feature]
+        ##       bundles_feature_plus_agg = (BI_bundles_feature_agg + BI_bundles_feature)/2 & [UB_bundles_feature, bundles_feature_plus_agg , UI_bundles_feature]
+        ##有不少提升
         # 融合不同图得到的用户和捆绑包特征
         users_rep, bundles_rep = self.fuse_users_bundles_feature(users_feature, bundles_feature)
 
