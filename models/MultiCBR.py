@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import scipy.sparse as sp 
+from scipy.sparse import csr_matrix, vstack , diags
 
 # 计算 BPR（Bayesian Personalized Ranking）损失
 def cal_bpr_loss(pred):
@@ -117,15 +118,16 @@ class MultiCBR(nn.Module):
         self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
 
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
-        self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 不知道是否需要转置
+        self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 需要转置
         
+        self.H_iub = self.hyper_graph()
+        # self.compare()
         # 如果增强类型是 MD，初始化模态丢弃层
         if self.conf['aug_type'] == 'MD':
             self.init_md_dropouts()
         # 如果增强类型是 Noise，初始化噪声参数
         elif self.conf['aug_type'] == "Noise":
             self.init_noise_eps()
-
     # 初始化模态丢弃层
     def init_md_dropouts(self):
         # 初始化用户 - 捆绑包图的丢弃层
@@ -256,7 +258,7 @@ class MultiCBR(nn.Module):
         # 进行多层传播
         for i in range(self.num_layers):
             # 通过图卷积更新特征
-            features = torch.spmm(graph, features) ## 稀疏矩阵和密集矩阵乘法 交互稀疏矩阵和第一级嵌入(torch)
+            features = torch.spmm(graph, features) ## 稀疏矩阵和密集矩阵乘法 交互稀疏矩阵和第一级嵌入(torch) 后面的features是embedding矩阵而不是嵌入后的结果 前面的是EU,EB
             # 如果增强类型是 MD 且不在测试阶段
             if self.conf["aug_type"] == "MD" and not test:
                 # 获取对应的丢弃层
@@ -362,10 +364,16 @@ class MultiCBR(nn.Module):
         # UI_users_feature = torch.sum(users_feature_plus_agg * , dim=0)
         # bundles_rep = torch.sum(bundles_feature * self.modal_coefs, dim=0)
         
+        # # 收集三种图传播得到的用户特征
+        # users_feature = [UB_users_feature, users_feature_plus_agg , BI_users_feature] 
+        # # 收集三种图传播得到的捆绑包特征
+        # bundles_feature = [UB_bundles_feature, bundles_feature_plus_agg , UI_bundles_feature]
+
         # 收集三种图传播得到的用户特征
-        users_feature = [UB_users_feature, users_feature_plus_agg , BI_users_feature] 
+        users_feature = [UB_users_feature, UI_users_feature, BI_users_feature]
         # 收集三种图传播得到的捆绑包特征
-        bundles_feature = [UB_bundles_feature, bundles_feature_plus_agg , UI_bundles_feature]
+        bundles_feature = [UB_bundles_feature, UI_bundles_feature, BI_bundles_feature]
+
         ##Test 1 [UB_users_feature, UI_users_feature, UI_users_feature_agg] &[UB_bundles_feature, BI_bundles_feature,BI_bundles_feature_agg]
         ##Tets 2 [UB_users_feature, UI_users_feature_agg, BI_users_feature] &[UB_bundles_feature, BI_bundles_feature_agg,UI_bundles_feature] 不咋行
         ##Test 3 users_feature_plus_agg = (UI_users_feature_agg + UI_users_feature)/2 &  [UB_users_feature, users_feature_plus_agg , BI_users_feature]
@@ -430,7 +438,7 @@ class MultiCBR(nn.Module):
         # 边缘丢弃可以按批次或按轮次进行，由训练循环控制
         if ED_drop:
             # 重新生成用户 - 捆绑包图的传播图
-            self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
+            self.UB_propagation_graph = self.get_propagation_graph(self.H_iub, self.conf["UB_ratio"])
             # 重新生成用户 - 物品图的传播图
             self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
             # 重新生成用户 - 物品图的聚合图
@@ -463,3 +471,60 @@ class MultiCBR(nn.Module):
         # 计算用户和捆绑包之间的得分矩阵
         scores = torch.mm(users_feature[users], bundles_feature.t())
         return scores
+
+    def hyper_graph(self):
+        device = self.device  # 获取设备信息
+
+        # 构建超图关联矩阵
+        H_iub = vstack([self.ui_graph, self.bi_graph], format='csr')  # 确保是 CSR 格式
+
+        # 计算度矩阵
+        epsilon = np.float32(1e-6)  # 使用 float32 数据类型
+        D_viub = diags(np.sum(H_iub, axis=1).A1 + epsilon, dtype=np.float32)
+        D_eiub = diags(np.sum(H_iub, axis=0).A1 + epsilon, dtype=np.float32)
+
+        # 计算逆平方根
+        D_viub_inv_sqrt = D_viub.power(-0.5)  # 计算逆平方根
+        D_eiub_inv_sqrt = D_eiub.power(-0.5)
+
+        # 归一化关联矩阵
+        # 注意：稀疏矩阵的乘法需要确保操作的稀疏性
+        H_normalized = D_viub_inv_sqrt @ H_iub @ D_eiub_inv_sqrt
+        H_normalized = H_normalized @ H_iub.T @ D_viub_inv_sqrt
+
+        # 阈值化处理以进一步稀疏化矩阵
+        threshold = 1e-5  # 设置阈值
+        H_normalized.data[np.abs(H_normalized.data) < threshold] = 0
+        H_normalized.eliminate_zeros()  # 移除零元素
+
+        # 转换为 PyTorch 稀疏张量
+        H_normalized_tensor = torch.sparse_coo_tensor(
+            torch.tensor(H_normalized.nonzero()),  # 稀疏矩阵的非零索引
+            torch.tensor(H_normalized.data),       # 稀疏矩阵的非零值
+            size=H_normalized.shape,               # 稀疏矩阵的形状
+            device=device
+        )
+
+        return H_normalized_tensor
+
+    def compare(self):
+        H_iub = self.H_iub
+        UB_propagation_graph = self.UB_propagation_graph
+
+        # 维度对比
+        print("H_iub shape:", H_iub.shape)
+        print("UB_propagation_graph shape:", UB_propagation_graph.shape)
+
+        # 数据类型对比
+        print("H_iub dtype:", H_iub.dtype)
+        print("UB_propagation_graph dtype:", UB_propagation_graph.dtype)
+
+        # 稀疏/密集对比
+        print("H_iub is sparse:", sp.issparse(H_iub))
+        print("UB_propagation_graph is sparse:", sp.issparse(UB_propagation_graph))
+
+        # 如果是稀疏矩阵，检查存储格式
+        if sp.issparse(H_iub):
+            print("H_iub format:", H_iub.format)
+        if sp.issparse(UB_propagation_graph):
+            print("UB_propagation_graph format:", UB_propagation_graph.format)
