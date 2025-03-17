@@ -21,7 +21,7 @@ def cal_bpr_loss(pred):
         pos = pred[:, 0].unsqueeze(1)
 
     # 计算 BPR 损失，使用 sigmoid 函数和对数函数
-    loss = - torch.log(torch.sigmoid(pos - negs))  # [bs]
+    loss = - torch.log(torch.sigmoid(pos - 0.2*negs))  # [bs]
     # 计算平均损失
     loss = torch.mean(loss)
 
@@ -120,7 +120,7 @@ class MultiCBR(nn.Module):
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
         self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 需要转置
         
-        self.H_iub = self.hyper_graph()
+        # self.H_iub = self.hyper_graph()
         # self.compare()
         # 如果增强类型是 MD，初始化模态丢弃层
         if self.conf['aug_type'] == 'MD':
@@ -438,7 +438,7 @@ class MultiCBR(nn.Module):
         # 边缘丢弃可以按批次或按轮次进行，由训练循环控制
         if ED_drop:
             # 重新生成用户 - 捆绑包图的传播图
-            self.UB_propagation_graph = self.get_propagation_graph(self.H_iub, self.conf["UB_ratio"])
+            self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
             # 重新生成用户 - 物品图的传播图
             self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
             # 重新生成用户 - 物品图的聚合图

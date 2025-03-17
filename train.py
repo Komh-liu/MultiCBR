@@ -312,7 +312,7 @@ def test(model, dataloader, conf):
     # 将模型设置为评估模式
     model.eval()
     # 获取多模态表示
-    rs = model.get_multi_modal_representations(test=True)
+    rs = model.get_multi_modal_representations(test=True) ##user的feature组和bundle的feature组
     # 遍历数据加载器
     for users, ground_truth_u_b, train_mask_u_b in dataloader:
         # 进行评估，得到预测结果
@@ -336,11 +336,12 @@ def test(model, dataloader, conf):
 def get_metrics(metrics, grd, pred, topks):
     tmp = {"recall": {}, "ndcg": {}}
     # 为每个 topk 值计算召回率和 NDCG
-    for topk in topks:
+    for topk in topks:## topk列表的个数
         # 获取每个用户的前 topk 个预测结果的索引
         _, col_indice = torch.topk(pred, topk)
         # 生成对应的行索引
-        row_indice = torch.zeros_like(col_indice) + torch.arange(pred.shape[0], device=pred.device, dtype=torch.long).view(-1, 1)
+        row_indice = torch.zeros_like(col_indice) + torch.arange(pred.shape[0], device=pred.device, dtype=torch.long).view(-1, 1)##？没搞懂，似乎是返回用户对应行号
+        
         # 判断预测结果是否命中真实结果
         is_hit = grd[row_indice.view(-1), col_indice.view(-1)].view(-1, topk)
         # 计算召回率
@@ -382,9 +383,9 @@ def get_ndcg(pred, grd, is_hit, topk):
 
     def IDCG(num_pos, topk, device):
         # 计算理想折损累计增益（IDCG）
-        hit = torch.zeros(topk, dtype=torch.float,device=device)
+        hit = torch.zeros(topk, dtype=torch.float,device=device)## tokp大小的行向量
         # 将真实正样本数量范围内的位置设为 1
-        hit[:num_pos] = 1
+        hit[:num_pos] = 1##有多少个行向量就设置为多少，越多IDCG越高
         # 计算 IDCG
         return DCG(hit, topk, device)
 
@@ -403,7 +404,7 @@ def get_ndcg(pred, grd, is_hit, topk):
     # 根据真实正样本数量获取对应的 IDCG
     idcg = IDCGs[num_pos]
     # 计算归一化折损累计增益（NDCG）
-    ndcg = dcg / idcg.to(device)
+    ndcg = dcg / idcg.to(device)##is_hit()/num_pos(总共实际)
     # 分母为总样本数减去没有正样本的样本数
     denorm = pred.shape[0] - (num_pos == 0).sum().item()
     # 分子为每个样本的 NDCG 之和
