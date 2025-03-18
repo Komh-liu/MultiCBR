@@ -123,7 +123,9 @@ class Datasets():
         # 获取捆绑包 - 物品的交互对和交互图
         b_i_pairs, b_i_graph = self.get_bi()
         # 获取用户 - 物品的交互对和交互图
-        u_i_pairs, u_i_graph = self.get_ui()
+        u_i_pairs, u_i_graph = self.get_ui() #u_i_pairs 似乎没用上
+        # 获取物品 - 物品的交互图
+        i_i_graph = self.get_ii()
 
         # 获取训练集的用户 - 捆绑包交互对和交互图
         u_b_pairs_train, u_b_graph_train = self.get_ub("train")
@@ -143,7 +145,8 @@ class Datasets():
         self.bundle_test_data = BundleTestDataset(u_b_pairs_test, u_b_graph_test, u_b_graph_train, self.num_users, self.num_bundles)
 
         # 存储用户 - 捆绑包、用户 - 物品、捆绑包 - 物品的交互图
-        self.graphs = [u_b_graph_train, u_i_graph, b_i_graph]
+        # self.graphs = [u_b_graph_train, u_i_graph, b_i_graph]
+        self.graphs = [u_b_graph_train, u_i_graph, b_i_graph, i_i_graph]
 
         # 创建训练集的数据加载器
         self.train_loader = DataLoader(self.bundle_train_data, batch_size=batch_size_train, shuffle=True, num_workers=10, drop_last=True)
@@ -222,3 +225,23 @@ class Datasets():
         print_statistics(u_b_graph, "U-B statistics in %s" %(task))
 
         return u_b_pairs, u_b_graph
+
+
+    def get_ii(self):
+        # 打开物品 - 物品交互信息文件
+        with open(os.path.join(self.path, self.name, 'item_item.txt'), 'r') as f:
+            # 读取文件中的交互对信息，并转换为元组列表
+            i_i_pairs = list(map(lambda s: tuple(int(i) for i in s[:-1].split('\t')[:2]), f.readlines()))
+            values = list(map(lambda s: float(s[:-1].split('\t')[2]), f.readlines()))
+
+        # 将交互对信息转换为 numpy 数组
+        indice = np.array(i_i_pairs, dtype=np.int32)
+        # 创建稀疏矩阵表示物品 - 物品的交互图
+        i_i_graph = sp.coo_matrix(
+            (values, (indice[:, 0], indice[:, 1])), shape=(self.num_items, self.num_items)).tocsr()
+
+        # 打印物品 - 物品交互图的统计信息
+        print_statistics(i_i_graph, 'I-I statistics')
+
+        return i_i_graph
+
