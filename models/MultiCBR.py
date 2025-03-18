@@ -21,7 +21,7 @@ def cal_bpr_loss(pred):
         pos = pred[:, 0].unsqueeze(1)
 
     # 计算 BPR 损失，使用 sigmoid 函数和对数函数
-    loss = - torch.log(torch.sigmoid(pos - 0.2*negs))  # [bs]
+    loss = - torch.log(torch.sigmoid(pos - negs))  # [bs]
     # 计算平均损失
     loss = torch.mean(loss)
 

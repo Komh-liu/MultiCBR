@@ -28,7 +28,7 @@ NetEase:
 
   lrs: [1.0e-3] # learning rate
   l2_regs: [1.0e-5] # the l2 regularization weight: lambda_2
-  c_lambdas: [0.5] # the contrastive loss weight: lambda_1
+  c_lambdas: [0.05] # the contrastive loss weight: lambda_1
   c_temps: [0.2] # the temperature in the contrastive loss: tau
 
   epochs: 50 # number of epochs to train

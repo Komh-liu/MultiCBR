@@ -11,21 +11,17 @@ from torch.utils.data import Dataset, DataLoader
 
 # 打印矩阵的统计信息，如平均交互数、非零行和列的比例、矩阵密度等
 def print_statistics(X, string):
-    print('>'*10 + string + '>'*10 )
-    # 计算矩阵每行交互数的平均值
-    print('Average interactions', X.sum(1).mean(0).item())
-    # 获取矩阵中非零元素的行索引和列索引
+    """
+    Print the statistics of a dataset
+    """
+    print('-'*10 + string + '-'*10)
+    print(f'Avg non-zeros in row:    {X.sum(1).mean(0).item():8.4f}')
     nonzero_row_indice, nonzero_col_indice = X.nonzero()
-    # 获取非零行的唯一索引
     unique_nonzero_row_indice = np.unique(nonzero_row_indice)
-    # 获取非零列的唯一索引
     unique_nonzero_col_indice = np.unique(nonzero_col_indice)
-    # 计算非零行的比例
-    print('Non-zero rows', len(unique_nonzero_row_indice)/X.shape[0])
-    # 计算非零列的比例
-    print('Non-zero columns', len(unique_nonzero_col_indice)/X.shape[1])
-    # 计算矩阵的密度
-    print('Matrix density', len(nonzero_row_indice)/(X.shape[0]*X.shape[1]))
+    print(f'Ratio of non-empty rows: {len(unique_nonzero_row_indice)/X.shape[0]:8.4f}')
+    print(f'Ratio of non-empty cols: {len(unique_nonzero_col_indice)/X.shape[1]:8.4f}')
+    print(f'Density of matrix:       {len(nonzero_row_indice)/(X.shape[0]*X.shape[1]):8.4f}')
 
 # 自定义数据集类，用于训练阶段的捆绑包数据
 class BundleTrainDataset(Dataset):
@@ -228,20 +224,23 @@ class Datasets():
 
 
     def get_ii(self):
-        # 打开物品 - 物品交互信息文件
-        with open(os.path.join(self.path, self.name, 'item_item.txt'), 'r') as f:
-            lines = f.readlines()
-            # 读取文件中的交互对信息，并转换为元组列表
-            i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
-            values = [float(line[:-1].split(' ')[2]) for line in lines]
+            # 打开物品 - 物品交互信息文件
+            with open(os.path.join(self.path, self.name, 'II_matrix_all.txt'), 'r') as f:
+                lines = f.readlines()
+                # 读取文件中的交互对信息，并转换为元组列表
+                i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
+                values = np.array([float(line[:-1].split(' ')[2]) for line in lines])
 
-        # 将交互对信息转换为 numpy 数组
-        indice = np.array(i_i_pairs, dtype=np.int32)
-        # 创建稀疏矩阵表示物品 - 物品的交互图
-        i_i_graph = sp.coo_matrix(
-            (values, (indice[:, 0], indice[:, 1])), shape=(self.num_items, self.num_items)).tocsr()
-        # 打印物品 - 物品交互图的统计信息
-        print_statistics(i_i_graph, 'I-I statistics')
+            # 使用 numpy 条件赋值修改值
+            values = np.where(values == 1, 0.8, values)
+            values = np.where(values == 2, 0.6, values)
 
-        return i_i_graph
+            # 将交互对信息转换为 numpy 数组
+            indice = np.array(i_i_pairs, dtype=np.int32)
+            # 创建稀疏矩阵表示物品 - 物品的交互图
+            i_i_graph = sp.coo_matrix(
+                (values, (indice[:, 0], indice[:, 1])), shape=(self.num_items, self.num_items)).tocsr()
+            # 打印物品 - 物品交互图的统计信息
+            print_statistics(i_i_graph, 'I-I statistics')
 
+            return i_i_graph
