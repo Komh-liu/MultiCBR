@@ -230,16 +230,16 @@ class Datasets():
     def get_ii(self):
         # 打开物品 - 物品交互信息文件
         with open(os.path.join(self.path, self.name, 'item_item.txt'), 'r') as f:
+            lines = f.readlines()
             # 读取文件中的交互对信息，并转换为元组列表
-            i_i_pairs = list(map(lambda s: tuple(int(i) for i in s[:-1].split('\t')[:2]), f.readlines()))
-            values = list(map(lambda s: float(s[:-1].split('\t')[2]), f.readlines()))
+            i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
+            values = [float(line[:-1].split(' ')[2]) for line in lines]
 
         # 将交互对信息转换为 numpy 数组
         indice = np.array(i_i_pairs, dtype=np.int32)
         # 创建稀疏矩阵表示物品 - 物品的交互图
         i_i_graph = sp.coo_matrix(
             (values, (indice[:, 0], indice[:, 1])), shape=(self.num_items, self.num_items)).tocsr()
-
         # 打印物品 - 物品交互图的统计信息
         print_statistics(i_i_graph, 'I-I statistics')
 

@@ -210,13 +210,18 @@ class MultiCBR(nn.Module):
     def get_propagation_graph_with_ii(self, bipartite_graph, ii_graph, modification_ratio=0):
         # 获取设备信息
         device = self.device
-        # 构建传播图，将二分图与其转置组合
-        propagation_graph = sp.bmat([[sp.csr_matrix((bipartite_graph.shape[0], bipartite_graph.shape[0])), bipartite_graph], [bipartite_graph.T, sp.csr_matrix((bipartite_graph.shape[1], bipartite_graph.shape[1]))]])
+        num_part_1 = bipartite_graph.shape[0]
+        num_items = ii_graph.shape[0]
+        if ii_graph.shape[0] != bipartite_graph.shape[1] or ii_graph.shape[1] != num_items:
+            raise ValueError(f"ii_graph 的大小 ({ii_graph.shape}) 与 bipartite_graph 中的物品数量不匹配，预期大小应为 ({bipartite_graph.shape[1]}, {bipartite_graph.shape[1]})。")
 
-        # 填充 II 图的交互信息
-        num_nodes = propagation_graph.shape[0]
-        num_items = bipartite_graph.shape[1]
-        propagation_graph[-num_items:, -num_items:] = ii_graph
+        # 构建传播图，同时填充 II 图
+        upper_left = sp.csr_matrix((num_part_1, num_part_1))
+        upper_right = bipartite_graph
+        lower_left = bipartite_graph.T
+        lower_right = ii_graph
+
+        propagation_graph = sp.bmat([[upper_left, upper_right], [lower_left, lower_right]])
 
         # 如果修改比率不为 0
         if modification_ratio != 0:
@@ -238,7 +243,8 @@ class MultiCBR(nn.Module):
         # 获取设备信息
         device = self.device
         # 构建传播图，将二分图与其转置组合
-        propagation_graph = sp.bmat([[sp.csr_matrix((bipartite_graph.shape[0], bipartite_graph.shape[0])), bipartite_graph], [bipartite_graph.T, sp.csr_matrix((bipartite_graph.shape[1], bipartite_graph.shape[1]))]])
+        propagation_graph = sp.bmat([[sp.csr_matrix((bipartite_graph.shape[0], bipartite_graph.shape[0])), bipartite_graph], 
+                                    [bipartite_graph.T, sp.csr_matrix((bipartite_graph.shape[1], bipartite_graph.shape[1]))]])
 
         # 如果修改比率不为 0
         if modification_ratio != 0:
