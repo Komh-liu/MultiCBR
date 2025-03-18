@@ -96,25 +96,29 @@ class MultiCBR(nn.Module):
         # 确保原始图是列表类型
         assert isinstance(raw_graph, list)
         # 提取用户 - 捆绑包图、用户 - 物品图和捆绑包 - 物品图
-        self.ub_graph, self.ui_graph, self.bi_graph = raw_graph
+        # self.ub_graph, self.ui_graph, self.bi_graph = raw_graph
+        # 提取用户 - 捆绑包图、用户 - 物品图、捆绑包 - 物品图和物品 - 物品图
+        self.ub_graph, self.ui_graph, self.bi_graph, self.ii_graph = raw_graph
 
         # 生成用于测试的无丢弃的传播图
         self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
 
-        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
+        self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
+        # self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
         self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
 
-        self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
+        # self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
+        self.BI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph)
         self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph)
 
         # 生成用于训练的带有配置丢弃率的传播图
         # 如果增强类型是 OP 或 MD，这些图将与上面的相同
         self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
 
-        self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
+        self.UI_propagation_graph = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph, self.conf["UI_ratio"])
         self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
 
-        self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
+        self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
         self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
 
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
@@ -204,6 +208,32 @@ class MultiCBR(nn.Module):
         self.UI_layer_coefs = UI_layer_coefs.unsqueeze(0).unsqueeze(-1).to(self.device)
         # 扩展捆绑包 - 物品图层融合权重的维度并移动到指定设备
         self.BI_layer_coefs = BI_layer_coefs.unsqueeze(0).unsqueeze(-1).to(self.device)
+
+    def get_propagation_graph_with_ii(self, bipartite_graph, ii_graph, modification_ratio=0):
+        # 获取设备信息
+        device = self.device
+        # 构建传播图，将二分图与其转置组合
+        propagation_graph = sp.bmat([[sp.csr_matrix((bipartite_graph.shape[0], bipartite_graph.shape[0])), bipartite_graph], [bipartite_graph.T, sp.csr_matrix((bipartite_graph.shape[1], bipartite_graph.shape[1]))]])
+
+        # 填充 II 图的交互信息
+        num_nodes = propagation_graph.shape[0]
+        num_items = bipartite_graph.shape[1]
+        propagation_graph[-num_items:, -num_items:] = ii_graph
+
+        # 如果修改比率不为 0
+        if modification_ratio != 0:
+            # 如果增强类型是 ED（边丢弃）
+            if self.conf["aug_type"] == "ED":
+                # 将传播图转换为 COO 格式
+                graph = propagation_graph.tocoo()
+                # 对边进行随机丢弃
+                values = np_edge_dropout(graph.data, modification_ratio)
+                # 重新构建传播图
+                propagation_graph = sp.coo_matrix((values, (graph.row, graph.col)), shape=graph.shape).tocsr()
+
+        # 对传播图进行拉普拉斯变换并转换为张量，然后移动到指定设备
+        return to_tensor(laplace_transform(propagation_graph)).to(device)
+
 
     # 获取传播图
     def get_propagation_graph(self, bipartite_graph, modification_ratio=0):
