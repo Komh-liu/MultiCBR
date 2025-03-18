@@ -1,5 +1,5 @@
 NetEase:
-  data_path: './datasets'
+  data_path: './datasets/cold'
   batch_size_train: 2048 # the batch size for training
   batch_size_test: 2048 # the batch size for testing
   topk: [10, 20, 40, 80] # the topks metrics for evaluation
@@ -28,7 +28,7 @@ NetEase:
 
   lrs: [1.0e-3] # learning rate
   l2_regs: [1.0e-5] # the l2 regularization weight: lambda_2
-  c_lambdas: [0.05] # the contrastive loss weight: lambda_1
+  c_lambdas: [0.5] # the contrastive loss weight: lambda_1
   c_temps: [0.2] # the temperature in the contrastive loss: tau
 
   epochs: 50 # number of epochs to train
