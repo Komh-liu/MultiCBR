@@ -25,6 +25,7 @@ NetEase:
     UB_layer: [0.35, 0.15, 0.5] # layer aggregation coefficients in UB graph
     UI_layer: [0.25, 0.65, 0.1] # layer aggregation coefficients in UI graph
     BI_layer: [0.4, 0.4, 0.2] # layer aggregation coefficients in BI graph
+    II_layer: [0.4, 0.4, 0.2]
 
   lrs: [1.0e-3] # learning rate
   l2_regs: [1.0e-5] # the l2 regularization weight: lambda_2
@@ -33,7 +34,7 @@ NetEase:
 
   interaction_threshold: 20 # for new bpr
 
-  epochs: 50 # number of epochs to train
+  epochs: 20 # number of epochs to train
   test_interval: 5 # by how many epochs to run the validation and testing.
 
 

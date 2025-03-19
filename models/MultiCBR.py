@@ -100,25 +100,29 @@ class MultiCBR(nn.Module):
         # 提取用户 - 捆绑包图、用户 - 物品图、捆绑包 - 物品图和物品 - 物品图
         self.ub_graph, self.ui_graph, self.bi_graph, self.ii_graph = raw_graph
 
+        self.II_propagation_graph = to_tensor(laplace_transform(self.ii_graph)).to(device)
+
         # 生成用于测试的无丢弃的传播图
         self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
 
-        self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
-        # self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
+        # self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
+        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
         self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
 
-        # self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
-        self.BI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph)
+        self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
+        # self.BI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph)
         self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph)
 
         # 生成用于训练的带有配置丢弃率的传播图
         # 如果增强类型是 OP 或 MD，这些图将与上面的相同
         self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
 
-        self.UI_propagation_graph = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph, self.conf["UI_ratio"])
+        # self.UI_propagation_graph = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph, self.conf["UI_ratio"])
+        self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
         self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
 
-        self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
+        # self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
+        self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
         self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
 
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
@@ -185,7 +189,8 @@ class MultiCBR(nn.Module):
         # 确保层融合权重的数量与层数一致
         assert (len(self.fusion_weights['UB_layer']) == self.num_layers + 1) and\
                (len(self.fusion_weights['UI_layer']) == self.num_layers + 1) and \
-               (len(self.fusion_weights['BI_layer']) == self.num_layers + 1),\
+               (len(self.fusion_weights['BI_layer']) == self.num_layers + 1) and \
+                (len(self.fusion_weights['II_layer']) == self.num_layers + 1), \
             "The number of layer fusion weights does not correspond to number of layers"
 
         # 将模态融合权重转换为 PyTorch 张量
@@ -196,6 +201,8 @@ class MultiCBR(nn.Module):
         UI_layer_coefs = torch.FloatTensor(self.fusion_weights['UI_layer'])
         # 将捆绑包 - 物品图层融合权重转换为 PyTorch 张量
         BI_layer_coefs = torch.FloatTensor(self.fusion_weights['BI_layer'])
+        # 将物品 - 物品图层融合权重转换为 PyTorch 张量
+        II_layer_coefs = torch.FloatTensor(self.fusion_weights['II_layer'])
 
         # 扩展模态融合权重的维度并移动到指定设备
         self.modal_coefs = modal_coefs.unsqueeze(-1).unsqueeze(-1).to(self.device)
@@ -206,6 +213,8 @@ class MultiCBR(nn.Module):
         self.UI_layer_coefs = UI_layer_coefs.unsqueeze(0).unsqueeze(-1).to(self.device)
         # 扩展捆绑包 - 物品图层融合权重的维度并移动到指定设备
         self.BI_layer_coefs = BI_layer_coefs.unsqueeze(0).unsqueeze(-1).to(self.device)
+        # 扩展物品 - 物品图层融合权重的维度并移动到指定设备
+        self.II_layer_coefs = II_layer_coefs.unsqueeze(0).unsqueeze(-1).to(self.device)
 
     def get_propagation_graph_with_ii(self, bipartite_graph, ii_graph, modification_ratio=0):
         # 获取设备信息
@@ -283,6 +292,39 @@ class MultiCBR(nn.Module):
         # 将处理后的二分图转换为张量并移动到指定设备
         return to_tensor(bipartite_graph).to(device)
 
+    def propagate_ii(self, graph, item_feature, layer_coef, test):
+        # 存储每一层的特征
+        all_features = [item_feature]
+
+        # 进行多层传播
+        for i in range(self.num_layers):
+            # 通过图卷积更新特征
+            item_feature = torch.spmm(graph, item_feature)
+            # # 如果增强类型是 MD 且不在测试阶段
+            # if self.conf["aug_type"] == "MD" and not test:
+            #     # 获取对应的丢弃层
+            #     mess_dropout = self.mess_dropout_dict["II"]
+            #     # 应用丢弃操作
+            #     item_feature = mess_dropout(item_feature)
+            # # 如果增强类型是 Noise 且不在测试阶段
+            # elif self.conf["aug_type"] == "Noise" and not test:
+            #     # 生成随机噪声
+            #     random_noise = torch.rand_like(item_feature).to(self.device)
+            #     # 获取对应的噪声参数
+            #     eps = self.eps_dict["II"]
+            #     # 添加噪声
+            #     item_feature += torch.sign(item_feature) * F.normalize(random_noise, dim=-1) * eps
+
+            # 对特征进行 L2 归一化
+            all_features.append(F.normalize(item_feature, p=2, dim=1))
+
+        # 将每一层的特征堆叠起来，并乘以层融合权重
+        all_features = torch.stack(all_features, 1) * layer_coef
+        # 对每一层的特征进行求和
+        all_features = torch.sum(all_features, dim=1)
+
+        return all_features
+
     # 进行图的传播操作 ？二级嵌入
     def propagate(self, graph, A_feature, B_feature, graph_type, layer_coef, test):
         # 将 A 特征和 B 特征拼接在一起
@@ -359,6 +401,9 @@ class MultiCBR(nn.Module):
 
     # 获取多模态表示
     def get_multi_modal_representations(self, test=False):
+        #  =============================  II graph propagation  =============================
+        propagated_items_feature = self.propagate_ii(self.II_propagation_graph, self.items_feature, self.II_layer_coefs, test)
+
         #  =============================  UB graph propagation  =============================
         if test:
             # 在测试阶段，使用无丢弃的传播图进行传播
@@ -370,32 +415,32 @@ class MultiCBR(nn.Module):
         #  =============================  UI graph propagation  =============================
         if test:
             # 在测试阶段，使用无丢弃的传播图进行传播
-            UI_users_feature, UI_items_feature = self.propagate(self.UI_propagation_graph_ori, self.users_feature, self.items_feature, "UI", self.UI_layer_coefs, test)
+            UI_users_feature, UI_items_feature = self.propagate(self.UI_propagation_graph_ori, self.users_feature, propagated_items_feature, "UI", self.UI_layer_coefs, test)
             # 在测试阶段，使用无丢弃的聚合图进行聚合
             UI_bundles_feature = self.aggregate(self.BI_aggregation_graph_ori, UI_items_feature, "BI", test)
         else:
             # 在训练阶段，使用带有丢弃的传播图进行传播
-            UI_users_feature, UI_items_feature = self.propagate(self.UI_propagation_graph, self.users_feature, self.items_feature, "UI", self.UI_layer_coefs, test)
+            UI_users_feature, UI_items_feature = self.propagate(self.UI_propagation_graph, self.users_feature, propagated_items_feature, "UI", self.UI_layer_coefs, test)
             # 在训练阶段，使用带有丢弃的聚合图进行聚合
             UI_bundles_feature = self.aggregate(self.BI_aggregation_graph, UI_items_feature, "BI", test)
         #  =============================  BI graph propagation  =============================
         if test:
             # 测试阶段使用无丢弃的传播图进行捆绑包 - 物品图的传播
-            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph_ori, self.bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
+            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph_ori, self.bundles_feature, propagated_items_feature, "BI", self.BI_layer_coefs, test)
             # 测试阶段使用无丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph_ori, BI_items_feature, "UI", test)
         else:
             # 训练阶段使用带丢弃的传播图进行捆绑包 - 物品图的传播
-            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, self.bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
+            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, self.bundles_feature, propagated_items_feature, "BI", self.BI_layer_coefs, test)
             # 训练阶段使用带丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph, BI_items_feature, "UI", test)
 
-        # 添加二次传播
-        UI_users_feature_agg = self.aggregate(self.UB_aggregation_graph, UB_bundles_feature, "UI", test)
-        BI_bundles_feature_agg = self.aggregate(self.BU_aggregation_graph, BI_users_feature, "BI", test)
-        # 更新需要修改的嵌入
-        users_feature_plus_agg = (UI_users_feature_agg + UI_users_feature)/2
-        bundles_feature_plus_agg = (BI_bundles_feature_agg + BI_bundles_feature)/2
+        # # 添加二次传播
+        # UI_users_feature_agg = self.aggregate(self.UB_aggregation_graph, UB_bundles_feature, "UI", test)
+        # BI_bundles_feature_agg = self.aggregate(self.BU_aggregation_graph, BI_users_feature, "BI", test)
+        # # 更新需要修改的嵌入
+        # users_feature_plus_agg = (UI_users_feature_agg + UI_users_feature)/2
+        # bundles_feature_plus_agg = (BI_bundles_feature_agg + BI_bundles_feature)/2
         # UI_users_feature = torch.sum(users_feature_plus_agg * , dim=0)
         # bundles_rep = torch.sum(bundles_feature * self.modal_coefs, dim=0)
         
