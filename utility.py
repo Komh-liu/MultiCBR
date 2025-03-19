@@ -276,7 +276,7 @@ class Datasets():
             # 读取文件中的交互对信息，并转换为元组列表
             i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
             values = np.array([float(line[:-1].split(' ')[2]) for line in lines])
-        para = [0.2,0.8,1]
+        para = [0.6,0.8,1]
         # 使用 numpy 条件赋值修改值
         values = np.where(values == 1, para[0], values)#bi高
         values = np.where(values == 2, para[1], values)#ui高bi低
@@ -293,5 +293,5 @@ class Datasets():
         return i_i_graph
     
 ## 0  ,0.8,1 ui@bi at lap on both  0.03351
-## 0.2,0.8,1 ui@bi at lap on both   
+## 0.2,0.8,1 ui@bi at lap on both  2025-03-19 20:56:37, Best in epoch 9, TOP 20: REC_T=0.03430, NDCG_T=0.01860
 ## 0.4,0.8,1 ui&bi at lap on both  0.03363
