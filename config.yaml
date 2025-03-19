@@ -31,6 +31,8 @@ NetEase:
   c_lambdas: [0.5] # the contrastive loss weight: lambda_1
   c_temps: [0.2] # the temperature in the contrastive loss: tau
 
+  interaction_threshold: 20 # for new bpr
+
   epochs: 50 # number of epochs to train
   test_interval: 5 # by how many epochs to run the validation and testing.
 

@@ -46,6 +46,20 @@ class BundleTrainDataset(Dataset):
         # 用于负采样的捆绑包 - 捆绑包信息
         self.b_b_for_neg_sample = b_b_for_neg_sample
 
+        # 计算每个捆绑包的交互量
+        self.bundle_interaction_counts = self.calculate_bundle_interaction_counts()
+        # 筛选高交互量的捆绑包
+        self.high_interaction_bundles = [bundle for bundle, count in self.bundle_interaction_counts.items() if count > self.conf["interaction_threshold"]]
+
+    def calculate_bundle_interaction_counts(self):
+        bundle_interaction_counts = {}
+        for user, bundle in self.u_b_pairs:
+            if bundle in bundle_interaction_counts:
+                bundle_interaction_counts[bundle] += 1
+            else:
+                bundle_interaction_counts[bundle] = 1
+        return bundle_interaction_counts
+
     # 根据索引获取一个样本
     def __getitem__(self, index):
         conf = self.conf
@@ -55,15 +69,16 @@ class BundleTrainDataset(Dataset):
         all_bundles = [pos_bundle]
 
         # 进行负采样
-        while True:
-            # 随机选择一个捆绑包索引
-            i = np.random.randint(self.num_bundles)
-            # 确保选择的捆绑包与当前用户没有交互，并且不在已选择的捆绑包列表中
-            if self.u_b_graph[user_b, i] == 0 and not i in all_bundles:
-                all_bundles.append(i)
-                # 当负样本数量达到指定值时，停止采样
-                if len(all_bundles) == self.neg_sample+1:
-                    break
+        user_interacted_bundles = set(self.u_b_graph[user_b].nonzero()[1])
+        possible_neg_bundles = [bundle for bundle in self.high_interaction_bundles if bundle not in user_interacted_bundles]
+
+        if len(possible_neg_bundles) < self.neg_sample:
+            # 如果可用的负样本不足，从所有未交互的捆绑包中采样
+            all_non_interacted_bundles = [bundle for bundle in range(self.num_bundles) if bundle not in user_interacted_bundles]
+            possible_neg_bundles = all_non_interacted_bundles
+
+        neg_bundles = np.random.choice(possible_neg_bundles, self.neg_sample, replace=False)
+        all_bundles.extend(neg_bundles)
 
         # 将用户索引和捆绑包索引转换为 PyTorch 的 LongTensor 类型并返回
         return torch.LongTensor([user_b]), torch.LongTensor(all_bundles)
@@ -154,6 +169,33 @@ class Datasets():
         self.val_loader = DataLoader(self.bundle_val_data, batch_size=batch_size_test, shuffle=False, num_workers=20)
         # 创建测试集的数据加载器
         self.test_loader = DataLoader(self.bundle_test_data, batch_size=batch_size_test, shuffle=False, num_workers=20)
+    #     # bundle出现次数计数器
+    #     self.bundle_interaction_counts = self.calculate_bundle_interaction_counts()
+    #     # 筛选高交互量的捆绑包
+    #     self.high_interaction_bundles = [bundle for bundle, count in self.bundle_interaction_counts.items() if count > self.conf["interaction_threshold"]]
+
+    # def get_neg_samples(self, user):
+    #     # 获取与当前用户交互的捆绑包
+    #     user_interacted_bundles = set(self.u_b_graph[user].nonzero()[1])
+    #     # 从高交互量且未与当前用户交互的捆绑包中采样负样本
+    #     possible_neg_bundles = [bundle for bundle in self.high_interaction_bundles if bundle not in user_interacted_bundles]
+    #     if len(possible_neg_bundles) < self.conf["neg_num"]:
+    #         # 如果可用的负样本不足，从所有未交互的捆绑包中采样
+    #         all_non_interacted_bundles = [bundle for bundle in range(self.num_bundles) if bundle not in user_interacted_bundles]
+    #         possible_neg_bundles = all_non_interacted_bundles
+    #     neg_bundles = np.random.choice(possible_neg_bundles, self.conf["neg_num"], replace=False)
+    #     return neg_bundles
+
+    # def calculate_bundle_interaction_counts(self):
+    #     # 假设u_b_pairs是用户 - 捆绑包正样本对
+    #     u_b_pairs = self.get_ub('train')[0]
+    #     bundle_interaction_counts = {}
+    #     for _, bundle in u_b_pairs:
+    #         if bundle in bundle_interaction_counts:
+    #             bundle_interaction_counts[bundle] += 1
+    #         else:
+    #             bundle_interaction_counts[bundle] = 1
+    #     return bundle_interaction_counts
 
     # 获取数据的基本信息，如用户数、捆绑包数和物品数
     def get_data_size(self):
