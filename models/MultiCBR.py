@@ -99,8 +99,10 @@ class MultiCBR(nn.Module):
         # self.ub_graph, self.ui_graph, self.bi_graph = raw_graph
         # 提取用户 - 捆绑包图、用户 - 物品图、捆绑包 - 物品图和物品 - 物品图
         self.ub_graph, self.ui_graph, self.bi_graph, self.ii_graph = raw_graph
-
+        # self.ui_graph = self.ui_graph @ self.ii_graph
+        # self.bi_graph = self.bi_graph @ self.ii_graph
         # 生成用于测试的无丢弃的传播图
+        '''
         self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
 
         self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
@@ -123,7 +125,29 @@ class MultiCBR(nn.Module):
 
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
         self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 需要转置
-        
+        '''
+        # 生成用于测试的无丢弃的传播图
+        self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
+
+        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
+        self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
+
+        self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
+        self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph)
+
+        # 生成用于训练的带有配置丢弃率的传播图
+        # 如果增强类型是 OP 或 MD，这些图将与上面的相同
+        self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
+
+        self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph@self.ii_graph, self.conf["UI_ratio"])
+        self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph@self.ii_graph, self.conf["UI_ratio"])
+
+        self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph@self.ii_graph, self.conf["BI_ratio"])
+        self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph@self.ii_graph, self.conf["BI_ratio"])
+
+        self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
+        self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 不知道是否需要转置
+
         # 如果增强类型是 MD，初始化模态丢弃层
         if self.conf['aug_type'] == 'MD':
             self.init_md_dropouts()
