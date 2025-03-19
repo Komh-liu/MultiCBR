@@ -275,7 +275,11 @@ class Datasets():
             lines = f.readlines()
             # 读取文件中的交互对信息，并转换为元组列表
             i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
-            values = [float(line[:-1].split(' ')[2]) for line in lines]
+            values = np.array([float(line[:-1].split(' ')[2]) for line in lines])
+
+        # 使用 numpy 条件赋值修改值
+        values = np.where(values == 1, 0.8, values)
+        values = np.where(values == 2, 0.6, values)
 
         # 将交互对信息转换为 numpy 数组
         indice = np.array(i_i_pairs, dtype=np.int32)
@@ -286,4 +290,3 @@ class Datasets():
         print_statistics(i_i_graph, 'I-I statistics')
 
         return i_i_graph
-
