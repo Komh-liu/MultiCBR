@@ -169,33 +169,6 @@ class Datasets():
         self.val_loader = DataLoader(self.bundle_val_data, batch_size=batch_size_test, shuffle=False, num_workers=20)
         # 创建测试集的数据加载器
         self.test_loader = DataLoader(self.bundle_test_data, batch_size=batch_size_test, shuffle=False, num_workers=20)
-    #     # bundle出现次数计数器
-    #     self.bundle_interaction_counts = self.calculate_bundle_interaction_counts()
-    #     # 筛选高交互量的捆绑包
-    #     self.high_interaction_bundles = [bundle for bundle, count in self.bundle_interaction_counts.items() if count > self.conf["interaction_threshold"]]
-
-    # def get_neg_samples(self, user):
-    #     # 获取与当前用户交互的捆绑包
-    #     user_interacted_bundles = set(self.u_b_graph[user].nonzero()[1])
-    #     # 从高交互量且未与当前用户交互的捆绑包中采样负样本
-    #     possible_neg_bundles = [bundle for bundle in self.high_interaction_bundles if bundle not in user_interacted_bundles]
-    #     if len(possible_neg_bundles) < self.conf["neg_num"]:
-    #         # 如果可用的负样本不足，从所有未交互的捆绑包中采样
-    #         all_non_interacted_bundles = [bundle for bundle in range(self.num_bundles) if bundle not in user_interacted_bundles]
-    #         possible_neg_bundles = all_non_interacted_bundles
-    #     neg_bundles = np.random.choice(possible_neg_bundles, self.conf["neg_num"], replace=False)
-    #     return neg_bundles
-
-    # def calculate_bundle_interaction_counts(self):
-    #     # 假设u_b_pairs是用户 - 捆绑包正样本对
-    #     u_b_pairs = self.get_ub('train')[0]
-    #     bundle_interaction_counts = {}
-    #     for _, bundle in u_b_pairs:
-    #         if bundle in bundle_interaction_counts:
-    #             bundle_interaction_counts[bundle] += 1
-    #         else:
-    #             bundle_interaction_counts[bundle] = 1
-    #     return bundle_interaction_counts
 
     # 获取数据的基本信息，如用户数、捆绑包数和物品数
     def get_data_size(self):
@@ -271,15 +244,16 @@ class Datasets():
 
     def get_ii(self):
         # 打开物品 - 物品交互信息文件
-        with open(os.path.join(self.path, self.name, 'item_item.txt'), 'r') as f:
+        with open(os.path.join(self.path, self.name, 'item_item_less.txt'), 'r') as f:
             lines = f.readlines()
             # 读取文件中的交互对信息，并转换为元组列表
             i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
             values = np.array([float(line[:-1].split(' ')[2]) for line in lines])
 
         # 使用 numpy 条件赋值修改值
-        values = np.where(values == 1, 0.8, values)
-        values = np.where(values == 2, 0.6, values)
+        values = np.where(values == 1, 0.05, values)
+        values = np.where(values == 2, 0.1, values)
+        values = np.where(values == 3, 2, values)
 
         # 将交互对信息转换为 numpy 数组
         indice = np.array(i_i_pairs, dtype=np.int32)

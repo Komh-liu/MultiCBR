@@ -177,7 +177,7 @@ def main():
                 if conf["aug_type"] == "ED" and (batch_anchor + 1) % ed_interval_bs == 0:
                     ED_drop = True
                 # 前向传播计算损失
-                bpr_loss, c_loss = model(batch, ED_drop=ED_drop)
+                bpr_loss, c_loss, ii_c_loss = model(batch, ED_drop=ED_drop)
                 # 计算总损失
                 loss = bpr_loss + conf["c_lambda"] * c_loss
                 # 反向传播计算梯度
@@ -189,13 +189,14 @@ def main():
                 loss_scalar = loss.detach()
                 bpr_loss_scalar = bpr_loss.detach()
                 c_loss_scalar = c_loss.detach()
+                ii_c_loss_scalar = ii_c_loss.detach()
                 # 将损失信息写入 TensorBoard
                 run.add_scalar("loss_bpr", bpr_loss_scalar, batch_anchor)
                 run.add_scalar("loss_c", c_loss_scalar, batch_anchor)
                 run.add_scalar("loss", loss_scalar, batch_anchor)
 
                 # 更新进度条的描述信息
-                pbar.set_description("epoch: %d, loss: %.4f, bpr_loss: %.4f, c_loss: %.4f" %(epoch, loss_scalar, bpr_loss_scalar, c_loss_scalar))
+                pbar.set_description("epoch: %d, loss: %.4f, bpr_loss: %.4f, c_loss: %.4f, ii_c_loss: %.4f" %(epoch, loss_scalar, bpr_loss_scalar, c_loss_scalar, ii_c_loss_scalar))
 
                 # 达到测试间隔时进行测试
                 if (batch_anchor + 1) % test_interval_bs == 0:

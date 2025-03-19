@@ -487,6 +487,52 @@ class MultiCBR(nn.Module):
 
         return c_loss
 
+
+    def cal_ii_single_item_loss(self, k):
+        # 从所有物品中随机抽取 k 个物品
+        random_items = np.random.choice(self.num_items, k, replace=False)
+
+        total_loss = 0
+        valid_items_count = 0
+
+        for item in random_items:
+            # 从 ii_graph 中获取当前物品的正样本
+            positive_samples = self.ii_graph[item].nonzero()[1]
+            num_positive = len(positive_samples)
+
+            if num_positive > 0:
+                # 获取所有物品的索引
+                all_items = np.arange(self.num_items)
+                # 排除当前物品和正样本，得到负样本候选集
+                negative_candidates = np.setdiff1d(all_items, np.append(item, positive_samples))
+
+                if len(negative_candidates) >= num_positive:
+                    # 从负样本候选集中随机选择与正样本数量相同的负样本
+                    negative_samples = np.random.choice(negative_candidates, num_positive, replace=False)
+
+                    positive_samples = torch.tensor(positive_samples, device=self.device)
+                    negative_samples = torch.tensor(negative_samples, device=self.device)
+
+                    item_feature = F.normalize(self.items_feature[item], p=2, dim=0)
+                    positive_features = F.normalize(self.items_feature[positive_samples], p=2, dim=1)
+                    negative_features = F.normalize(self.items_feature[negative_samples], p=2, dim=1)
+
+                    positive_scores = torch.sum(item_feature * positive_features, dim=1)
+                    negative_scores = torch.sum(item_feature * negative_features, dim=1)
+
+                    positive_scores = torch.exp(positive_scores / self.c_temp)
+                    negative_scores = torch.exp(negative_scores / self.c_temp)
+
+                    total_scores = torch.cat([positive_scores, negative_scores])
+                    ii_loss = - torch.mean(torch.log(positive_scores / total_scores.sum()))
+                    total_loss += ii_loss
+                    valid_items_count += 1
+
+        if valid_items_count == 0:
+            return torch.tensor(0.0, device=self.device)
+        else:
+            return total_loss / valid_items_count
+
     # 计算总损失
     def cal_loss(self, users_feature, bundles_feature):
         # users_feature / bundles_feature: [bs, 1+neg_num, emb_size]
@@ -499,14 +545,17 @@ class MultiCBR(nn.Module):
         u_view_cl = self.cal_c_loss(users_feature, users_feature)
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
+        # 计算IIgraph的对比损失
+        k = 50  # 可根据需要调整 k 的值
+        ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
-        c_losses = [u_view_cl, b_view_cl]
+        c_losses = [u_view_cl, b_view_cl, ii_single_item_loss]
 
         # 计算平均对比损失
         c_loss = sum(c_losses) / len(c_losses)
 
-        return bpr_loss, c_loss
+        return bpr_loss, c_loss, ii_single_item_loss
 
     # 前向传播函数
     def forward(self, batch, ED_drop=False):
@@ -535,9 +584,9 @@ class MultiCBR(nn.Module):
         bundles_embedding = bundles_rep[bundles]
 
         # 计算 BPR 损失和对比损失
-        bpr_loss, c_loss = self.cal_loss(users_embedding, bundles_embedding)
+        bpr_loss, c_loss, ii_c_loss = self.cal_loss(users_embedding, bundles_embedding)
 
-        return bpr_loss, c_loss
+        return bpr_loss, c_loss, ii_c_loss
 
     # 评估函数
     def evaluate(self, propagate_result, users):
