@@ -276,11 +276,11 @@ class Datasets():
             # 读取文件中的交互对信息，并转换为元组列表
             i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
             values = np.array([float(line[:-1].split(' ')[2]) for line in lines])
-
+        para = [0.2,0.8,1]
         # 使用 numpy 条件赋值修改值
-        values = np.where(values == 1, 0, values)#bi高
-        values = np.where(values == 2, 0.6, values)#ui高bi低
-        values = np.where(values == 3, 1, values)
+        values = np.where(values == 1, para[0], values)#bi高
+        values = np.where(values == 2, para[1], values)#ui高bi低
+        values = np.where(values == 3, para[2], values)
 
         # 将交互对信息转换为 numpy 数组
         indice = np.array(i_i_pairs, dtype=np.int32)
@@ -288,8 +288,10 @@ class Datasets():
         i_i_graph = sp.coo_matrix(
             (values, (indice[:, 0], indice[:, 1])), shape=(self.num_items, self.num_items)).tocsr()
         # 打印物品 - 物品交互图的统计信息
-        print_statistics(i_i_graph, 'I-I statistics')
-
+        # print_statistics(i_i_graph, 'I-I statistics')
+        print('\n'+'*'*10 + " para: " + str(para) + ' ' + '*'*10+'\n')
         return i_i_graph
-
-## 0,0.25,1 ui@ii on train 
+    
+## 0  ,0.8,1 ui@bi at lap on both  0.03351
+## 0.2,0.8,1 ui@bi at lap on both   
+## 0.4,0.8,1 ui&bi at lap on both  0.03363
