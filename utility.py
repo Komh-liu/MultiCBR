@@ -246,7 +246,7 @@ class Datasets():
 
     def get_ii(self):
         # 打开物品 - 物品交互信息文件
-        with open(os.path.join(self.path, self.name, 'item_item.txt'), 'r') as f:
+        with open(os.path.join(self.path, self.name, 'item_item_new_123.txt'), 'r') as f:
             lines = f.readlines()
         
         # 使用列表推导式一次性处理所有行
@@ -262,7 +262,7 @@ class Datasets():
         values = np.array([relation_type for _, _, relation_type in data])
 
         # 使用 numpy 条件赋值修改值
-        para = [0.2,0.8,1]
+        para = [0.2,0.5,1]
         values = np.where(values == 1, para[0], values)#bi高
         values = np.where(values == 2, para[1], values)#ui高bi低
         values = np.where(values == 3, para[2], values)

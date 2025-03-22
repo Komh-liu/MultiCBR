@@ -523,7 +523,7 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 20  # 可根据需要调整 k 的值
+        k = 30  # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
