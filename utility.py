@@ -48,7 +48,7 @@ class BundleTrainDataset(Dataset):
 
         # 计算每个捆绑包的交互量
         self.bundle_interaction_counts = self.calculate_bundle_interaction_counts()
-        # 筛选高交互量的捆绑包
+        # 筛选高交互量的捆绑包 用来计算bpr
         self.high_interaction_bundles = [bundle for bundle, count in self.bundle_interaction_counts.items() if count > self.conf["interaction_threshold"]]
 
     def calculate_bundle_interaction_counts(self):
@@ -134,6 +134,8 @@ class Datasets():
 
         # 获取数据的基本信息，如用户数、捆绑包数和物品数
         self.num_users, self.num_bundles, self.num_items = self.get_data_size()
+
+        self.item_relation_types = conf.get('item_relation_types', [])
 
         # 获取捆绑包 - 物品的交互对和交互图
         b_i_pairs, b_i_graph = self.get_bi()
@@ -244,16 +246,26 @@ class Datasets():
 
     def get_ii(self):
         # 打开物品 - 物品交互信息文件
-        with open(os.path.join(self.path, self.name, 'item_item_less.txt'), 'r') as f:
+        with open(os.path.join(self.path, self.name, 'item_item.txt'), 'r') as f:
             lines = f.readlines()
-            # 读取文件中的交互对信息，并转换为元组列表
-            i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
-            values = np.array([float(line[:-1].split(' ')[2]) for line in lines])
+        
+        # 使用列表推导式一次性处理所有行
+        data = [
+            (int(parts[0]), int(parts[1]), float(parts[2]))
+            for line in lines
+            for parts in [line[:-1].split(' ')]
+            if float(parts[2]) in self.item_relation_types
+        ]
+
+        # 分离数据
+        i_i_pairs = [(item1, item2) for item1, item2, _ in data]
+        values = np.array([relation_type for _, _, relation_type in data])
 
         # 使用 numpy 条件赋值修改值
-        values = np.where(values == 1, 0.05, values)
-        values = np.where(values == 2, 0.1, values)
-        values = np.where(values == 3, 2, values)
+        para = [0.2,0.8,1]
+        values = np.where(values == 1, para[0], values)#bi高
+        values = np.where(values == 2, para[1], values)#ui高bi低
+        values = np.where(values == 3, para[2], values)
 
         # 将交互对信息转换为 numpy 数组
         indice = np.array(i_i_pairs, dtype=np.int32)

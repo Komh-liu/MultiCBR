@@ -109,21 +109,28 @@ class MultiCBR(nn.Module):
         self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
         self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
 
-        self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
+        # self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
         # self.BI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph)
-        self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph)
+        # self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph)
+        self.BI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph))
+        self.BI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph))
 
         # 生成用于训练的带有配置丢弃率的传播图
         # 如果增强类型是 OP 或 MD，这些图将与上面的相同
         self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
 
         # self.UI_propagation_graph = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph, self.conf["UI_ratio"])
-        self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
-        self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
+        # self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
+        # self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
+        self.UI_propagation_graph = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
+        self.UI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
 
         # self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
-        self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
-        self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
+        # self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
+        # self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
+
+        self.BI_propagation_graph = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
+        self.BI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
 
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
         self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 需要转置
@@ -434,26 +441,11 @@ class MultiCBR(nn.Module):
             BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, self.bundles_feature, propagated_items_feature, "BI", self.BI_layer_coefs, test)
             # 训练阶段使用带丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph, BI_items_feature, "UI", test)
-
-        # # 添加二次传播
-        # UI_users_feature_agg = self.aggregate(self.UB_aggregation_graph, UB_bundles_feature, "UI", test)
-        # BI_bundles_feature_agg = self.aggregate(self.BU_aggregation_graph, BI_users_feature, "BI", test)
-        # # 更新需要修改的嵌入
-        # users_feature_plus_agg = (UI_users_feature_agg + UI_users_feature)/2
-        # bundles_feature_plus_agg = (BI_bundles_feature_agg + BI_bundles_feature)/2
-        # UI_users_feature = torch.sum(users_feature_plus_agg * , dim=0)
-        # bundles_rep = torch.sum(bundles_feature * self.modal_coefs, dim=0)
         
         # 收集三种图传播得到的用户特征
         users_feature = [UB_users_feature, UI_users_feature, BI_users_feature]
         # 收集三种图传播得到的捆绑包特征
         bundles_feature = [UB_bundles_feature, UI_bundles_feature, BI_bundles_feature]
-
-        ##Test 1 [UB_users_feature, UI_users_feature, UI_users_feature_agg] &[UB_bundles_feature, BI_bundles_feature,BI_bundles_feature_agg]
-        ##Tets 2 [UB_users_feature, UI_users_feature_agg, BI_users_feature] &[UB_bundles_feature, BI_bundles_feature_agg,UI_bundles_feature] 不咋行
-        ##Test 3 users_feature_plus_agg = (UI_users_feature_agg + UI_users_feature)/2 &  [UB_users_feature, users_feature_plus_agg , BI_users_feature]
-        ##       bundles_feature_plus_agg = (BI_bundles_feature_agg + BI_bundles_feature)/2 & [UB_bundles_feature, bundles_feature_plus_agg , UI_bundles_feature]
-        ##有不少提升
         # 融合不同图得到的用户和捆绑包特征
         users_rep, bundles_rep = self.fuse_users_bundles_feature(users_feature, bundles_feature)
 
@@ -546,7 +538,7 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 50  # 可根据需要调整 k 的值
+        k = 20  # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
