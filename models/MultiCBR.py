@@ -307,21 +307,6 @@ class MultiCBR(nn.Module):
         for i in range(self.num_layers):
             # 通过图卷积更新特征
             item_feature = torch.spmm(graph, item_feature)
-            # # 如果增强类型是 MD 且不在测试阶段
-            # if self.conf["aug_type"] == "MD" and not test:
-            #     # 获取对应的丢弃层
-            #     mess_dropout = self.mess_dropout_dict["II"]
-            #     # 应用丢弃操作
-            #     item_feature = mess_dropout(item_feature)
-            # # 如果增强类型是 Noise 且不在测试阶段
-            # elif self.conf["aug_type"] == "Noise" and not test:
-            #     # 生成随机噪声
-            #     random_noise = torch.rand_like(item_feature).to(self.device)
-            #     # 获取对应的噪声参数
-            #     eps = self.eps_dict["II"]
-            #     # 添加噪声
-            #     item_feature += torch.sign(item_feature) * F.normalize(random_noise, dim=-1) * eps
-
             # 对特征进行 L2 归一化
             all_features.append(F.normalize(item_feature, p=2, dim=1))
 
@@ -433,12 +418,12 @@ class MultiCBR(nn.Module):
         #  =============================  BI graph propagation  =============================
         if test:
             # 测试阶段使用无丢弃的传播图进行捆绑包 - 物品图的传播
-            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph_ori, self.bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
+            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph_ori, UI_bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
             # 测试阶段使用无丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph_ori, BI_items_feature, "UI", test)
         else:
             # 训练阶段使用带丢弃的传播图进行捆绑包 - 物品图的传播
-            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, self.bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
+            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, UI_bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
             # 训练阶段使用带丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph, BI_items_feature, "UI", test)
         
