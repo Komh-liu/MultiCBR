@@ -5,7 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import scipy.sparse as sp 
-from scipy.sparse import csr_matrix, vstack , diags
+from scipy.sparse import csr_matrix, lil_matrix
+from tqdm import tqdm
 
 # 计算 BPR（Bayesian Personalized Ranking）损失
 def cal_bpr_loss(pred):
@@ -37,6 +38,72 @@ def laplace_transform(graph):
     graph = rowsum_sqrt @ graph @ colsum_sqrt
 
     return graph
+def is_diagonal(matrix: csr_matrix) -> bool:
+    """检查稀疏矩阵是否为对角矩阵（非对角线元素全为0）"""
+    matrix = csr_matrix(matrix)
+    for i in range(matrix.shape[0]):
+        # 获取第i行的非零列索引
+        start = matrix.indptr[i]
+        end = matrix.indptr[i+1]
+        cols = matrix.indices[start:end]
+        # 检查所有列索引是否等于行号i
+        if not np.all(cols == i):
+            return False
+    return True
+
+def integrate_II_into_AI(A_graph, II_graph,verify = True):
+    # 确保输入为csr_matrix格式
+    A_graph = csr_matrix(A_graph)
+    II_graph = csr_matrix(II_graph)
+        # 检查II_graph是否为对角矩阵
+    if not is_diagonal(II_graph):
+        raise ValueError("II_graph must be a diagonal matrix.")
+    # 计算间接交互权重
+    indirect_weight = A_graph.dot(II_graph)
+    
+    # 计算路径数量（处理稀疏矩阵乘法）
+    path_count_indicator = (II_graph > 0).astype(int)
+    path_count = A_graph.dot(path_count_indicator)
+    
+    # 归一化处理（避免除零错误）
+    normalized_data = np.divide(
+        indirect_weight.data, 
+        path_count.data, 
+        out=np.zeros_like(indirect_weight.data), 
+        where=path_count.data != 0
+    )
+    normalized_weight = csr_matrix(
+        (normalized_data, indirect_weight.indices, indirect_weight.indptr), 
+        shape=indirect_weight.shape
+    )
+    # 清除normalized_weight中的直接交互位置（关键修改）
+    row_indices, col_indices = A_graph.nonzero()
+    normalized_weight[row_indices, col_indices] = 0
+    
+    # 合并直接交互与归一化后的间接交互
+    new_UI = A_graph + normalized_weight
+    
+    # 处理存在直接交互的位置：直接设为1
+    row_indices, col_indices = A_graph.nonzero()
+    new_UI[row_indices, col_indices] = 1
+    
+    # 确保值不超过1（防御性处理）
+    new_UI_data = np.clip(new_UI.data, a_max=1, a_min=None)
+    
+        # 验证矩阵是否相同（可选）
+    if verify:
+        # 比较稀疏矩阵的非零元素
+        a_coo = A_graph.tocoo()
+        new_coo = new_UI.tocoo()
+        if (a_coo.shape == new_coo.shape and
+            np.array_equal(a_coo.row, new_coo.row) and
+            np.array_equal(a_coo.col, new_coo.col) and
+            np.allclose(a_coo.data, new_coo.data, atol=1e-8)):
+            print("The output matrix is identical to the input A_graph.")
+        else:
+            print("The output matrix differs from the input A_graph.")
+            
+    return csr_matrix((new_UI_data, new_UI.indices, new_UI.indptr), shape=new_UI.shape)
 
 # 将稀疏矩阵转换为 PyTorch 稀疏张量
 def to_tensor(graph):
@@ -99,55 +166,79 @@ class MultiCBR(nn.Module):
         # self.ub_graph, self.ui_graph, self.bi_graph = raw_graph
         # 提取用户 - 捆绑包图、用户 - 物品图、捆绑包 - 物品图和物品 - 物品图
         self.ub_graph, self.ui_graph, self.bi_graph, self.ii_graph = raw_graph
-        # self.ui_graph = self.ui_graph @ self.ii_graph
-        # self.bi_graph = self.bi_graph @ self.ii_graph
-        # 生成用于测试的无丢弃的传播图
         '''
+        # 生成用于测试的无丢弃的传播图
         self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
 
-        self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
-        # self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
+        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
         self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
 
-        # self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
-        self.BI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph)
+        self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
         self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph)
 
         # 生成用于训练的带有配置丢弃率的传播图
         # 如果增强类型是 OP 或 MD，这些图将与上面的相同
         self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
 
-        self.UI_propagation_graph = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph, self.conf["UI_ratio"])
+        self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
         self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
 
-        self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
+        self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
         self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
-
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
-        self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 需要转置
+        self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 不知道是否需要转置
         '''
+        
         # 生成用于测试的无丢弃的传播图
+        
+        '''
+        
         self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
         # laplace_transform()
-        self.UI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph))
-        self.UI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph))
+        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph@self.ii_graph)
+        self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph@self.ii_graph)
 
-        self.BI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph))
-        self.BI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph))
+        self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph@self.ii_graph)
+        self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph@self.ii_graph)
 
         # 生成用于训练的带有配置丢弃率的传播图
         # 如果增强类型是 OP 或 MD，这些图将与上面的相同
         self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
 
-        self.UI_propagation_graph = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
-        self.UI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
+        self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph@self.ii_graph, self.conf["UI_ratio"])
+        self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph@self.ii_graph, self.conf["UI_ratio"])
 
-        self.BI_propagation_graph = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
-        self.BI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
+        self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph@self.ii_graph, self.conf["BI_ratio"])
+        self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph@self.ii_graph, self.conf["BI_ratio"])
 
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
         self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 不知道是否需要转置
+        
+        '''
+        self.ui_new = integrate_II_into_AI(self.ui_graph,self.ii_graph)
+        self.bi_new = integrate_II_into_AI(self.bi_graph,self.ii_graph)   
+             
+        self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
+        # laplace_transform()
+        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_new)
+        self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_new)
 
+        self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_new)
+        self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_new)
+
+        # 生成用于训练的带有配置丢弃率的传播图
+        # 如果增强类型是 OP 或 MD，这些图将与上面的相同
+        self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
+
+        self.UI_propagation_graph = self.get_propagation_graph(self.ui_new, self.conf["UI_ratio"])
+        self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_new, self.conf["UI_ratio"])
+
+        self.BI_propagation_graph = self.get_propagation_graph(self.bi_new, self.conf["BI_ratio"])
+        self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_new, self.conf["BI_ratio"])
+
+        self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
+        self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 不知道是否需要转置
+        
         # 如果增强类型是 MD，初始化模态丢弃层
         if self.conf['aug_type'] == 'MD':
             self.init_md_dropouts()

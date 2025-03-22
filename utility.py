@@ -8,6 +8,20 @@ import scipy.sparse as sp
 
 import torch
 from torch.utils.data import Dataset, DataLoader
+from scipy.sparse import csr_matrix, lil_matrix
+
+def is_diagonal(matrix: csr_matrix) -> bool:
+    """检查稀疏矩阵是否为对角矩阵（非对角线元素全为0）"""
+    matrix = csr_matrix(matrix)
+    for i in range(matrix.shape[0]):
+        # 获取第i行的非零列索引
+        start = matrix.indptr[i]
+        end = matrix.indptr[i+1]
+        cols = matrix.indices[start:end]
+        # 检查所有列索引是否等于行号i
+        if not np.all(cols == i):
+            return False
+    return True
 
 # 打印矩阵的统计信息，如平均交互数、非零行和列的比例、矩阵密度等
 def print_statistics(X, string):
@@ -271,26 +285,54 @@ class Datasets():
 
     def get_ii(self):
         # 打开物品 - 物品交互信息文件
-        with open(os.path.join(self.path, self.name, 'II_matrix_all.txt'), 'r') as f:
-            lines = f.readlines()
-            # 读取文件中的交互对信息，并转换为元组列表
-            i_i_pairs = [tuple(int(i) for i in line[:-1].split(' ')[:2]) for line in lines]
-            values = np.array([float(line[:-1].split(' ')[2]) for line in lines])
-        para = [0.6,0.8,1]
-        # 使用 numpy 条件赋值修改值
-        values = np.where(values == 1, para[0], values)#bi高
-        values = np.where(values == 2, para[1], values)#ui高bi低
-        values = np.where(values == 3, para[2], values)
+        # 打开物品 - 物品交互信息文件
+        file_path = os.path.join(self.path, self.name, 'II_matrix_all.txt')
+        try:
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+                i_i_pairs = []
+                values = []
+                wrong_records = []
+                for idx, line in enumerate(lines):
+                    try:
+                        parts = line[:-1].split(' ')
+                        i, j = int(parts[0]), int(parts[1])
+                        if i != j:
+                            wrong_records.append((idx + 1, line))
+                        i_i_pairs.append((i, j))
+                        values.append(float(parts[2]))
+                    except (IndexError, ValueError):
+                        print(f"第 {idx + 1} 行解析出错: {line}")
 
-        # 将交互对信息转换为 numpy 数组
+                if wrong_records:
+                    print("以下记录导致矩阵不是对角矩阵:")
+                    for record_num, record in wrong_records:
+                        print(f"第 {record_num} 行: {record}")
+
+                values = np.array(values)
+
+        except FileNotFoundError:
+            print(f"文件 {file_path} 未找到。")
+            return None
+            
+        para = [0, 0, 1, 0]  # 对应值1、2、3、4的替换值
+        # 使用 np.select 统一处理条件，未匹配的值设为0
+        conditions = [values == 1, values == 2, values == 3, values == 4]
+        values = np.select(conditions, para, default=0)
+
         indice = np.array(i_i_pairs, dtype=np.int32)
-        # 创建稀疏矩阵表示物品 - 物品的交互图
         i_i_graph = sp.coo_matrix(
-            (values, (indice[:, 0], indice[:, 1])), shape=(self.num_items, self.num_items)).tocsr()
+            (values, (indice[:, 0], indice[:, 1])),
+            shape=(self.num_items, self.num_items)
+        ).tocsr()
+
         # 打印物品 - 物品交互图的统计信息
         # print_statistics(i_i_graph, 'I-I statistics')
-        print('\n'+'*'*10 + " para: " + str(para) + ' ' + '*'*10+'\n')
+        print('\n' + '*' * 10 + " para: " + str(para) + ' ' + '*' * 10 + '\n')
+        if not is_diagonal(i_i_graph):
+            raise ValueError("II_graph must be a diagonal matrix")
         return i_i_graph
+
     
 ## 0  ,0.8,1 ui@bi at lap on both  0.03351
 ## 0.2,0.8,1 ui@bi at lap on both  2025-03-19 20:56:37, Best in epoch 9, TOP 20: REC_T=0.03430, NDCG_T=0.01860

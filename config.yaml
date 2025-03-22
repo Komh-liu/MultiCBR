@@ -87,15 +87,16 @@ Youshu:
   BI_ratios: [0.1]
 
   fusion_weights:
-    modal_weight: [0.35, 0.15, 0.5]
+    modal_weight: [0, 0.3, 0.7]
     UB_layer: [0.7, 0.2, 0.1]
     UI_layer: [0.6, 0.2, 0.2]
     BI_layer: [0.6, 0.1, 0.3]
 
   lrs: [1.0e-3]
   l2_regs: [1.0e-5]
-  c_lambdas: [0.04]
+  c_lambdas: [0.4] ## 0.04
   c_temps: [0.23]
 
-  epochs: 100
+  interaction_threshold: 20 # for new bpr
+  epochs: 100 ##old 100
   test_interval: 5
