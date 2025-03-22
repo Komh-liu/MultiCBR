@@ -106,8 +106,8 @@ class MultiCBR(nn.Module):
         self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
 
         # self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
-        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
-        self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
+        self.UI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph))
+        self.UI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph))
 
         # self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
         # self.BI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph)
@@ -422,23 +422,23 @@ class MultiCBR(nn.Module):
         #  =============================  UI graph propagation  =============================
         if test:
             # 在测试阶段，使用无丢弃的传播图进行传播
-            UI_users_feature, UI_items_feature = self.propagate(self.UI_propagation_graph_ori, self.users_feature, propagated_items_feature, "UI", self.UI_layer_coefs, test)
+            UI_users_feature, UI_items_feature = self.propagate(self.UI_propagation_graph_ori, self.users_feature, self.items_feature, "UI", self.UI_layer_coefs, test)
             # 在测试阶段，使用无丢弃的聚合图进行聚合
             UI_bundles_feature = self.aggregate(self.BI_aggregation_graph_ori, UI_items_feature, "BI", test)
         else:
             # 在训练阶段，使用带有丢弃的传播图进行传播
-            UI_users_feature, UI_items_feature = self.propagate(self.UI_propagation_graph, self.users_feature, propagated_items_feature, "UI", self.UI_layer_coefs, test)
+            UI_users_feature, UI_items_feature = self.propagate(self.UI_propagation_graph, self.users_feature, self.items_feature, "UI", self.UI_layer_coefs, test)
             # 在训练阶段，使用带有丢弃的聚合图进行聚合
             UI_bundles_feature = self.aggregate(self.BI_aggregation_graph, UI_items_feature, "BI", test)
         #  =============================  BI graph propagation  =============================
         if test:
             # 测试阶段使用无丢弃的传播图进行捆绑包 - 物品图的传播
-            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph_ori, self.bundles_feature, propagated_items_feature, "BI", self.BI_layer_coefs, test)
+            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph_ori, self.bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
             # 测试阶段使用无丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph_ori, BI_items_feature, "UI", test)
         else:
             # 训练阶段使用带丢弃的传播图进行捆绑包 - 物品图的传播
-            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, self.bundles_feature, propagated_items_feature, "BI", self.BI_layer_coefs, test)
+            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, self.bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
             # 训练阶段使用带丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph, BI_items_feature, "UI", test)
         
