@@ -98,7 +98,7 @@ class MultiCBR(nn.Module):
         # 提取用户 - 捆绑包图、用户 - 物品图和捆绑包 - 物品图
         # self.ub_graph, self.ui_graph, self.bi_graph = raw_graph
         # 提取用户 - 捆绑包图、用户 - 物品图、捆绑包 - 物品图和物品 - 物品图
-        self.ub_graph, self.ui_graph, self.bi_graph, self.ii_graph = raw_graph
+        self.ub_graph, self.ui_graph, self.bi_graph, self.ii_graph, self.w_bi_graph = raw_graph
 
         self.II_propagation_graph = to_tensor(laplace_transform(self.ii_graph)).to(device)
 
@@ -109,11 +109,10 @@ class MultiCBR(nn.Module):
         self.UI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph))
         self.UI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph))
 
-        # self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
-        # self.BI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph)
-        # self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph)
-        self.BI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph))
-        self.BI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph))
+        # self.BI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph))
+        # self.BI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph))
+        self.BI_propagation_graph_ori = self.get_propagation_graph(self.w_bi_graph)
+        self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.w_bi_graph)
 
         # 生成用于训练的带有配置丢弃率的传播图
         # 如果增强类型是 OP 或 MD，这些图将与上面的相同
@@ -523,7 +522,7 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 30  # 可根据需要调整 k 的值
+        k = 0  # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失

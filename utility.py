@@ -137,8 +137,13 @@ class Datasets():
 
         self.item_relation_types = conf.get('item_relation_types', [])
 
+        # 读取物品流行度文件
+        self.item_popularity = self.get_item_popularity()
+
         # 获取捆绑包 - 物品的交互对和交互图
         b_i_pairs, b_i_graph = self.get_bi()
+        # 获取使用流行度的捆绑包 - 物品的交互对和交互图
+        w_b_i_pairs, w_b_i_graph = self.get_bi_weighted()
         # 获取用户 - 物品的交互对和交互图
         u_i_pairs, u_i_graph = self.get_ui() #u_i_pairs 似乎没用上
         # 获取物品 - 物品的交互图
@@ -163,7 +168,7 @@ class Datasets():
 
         # 存储用户 - 捆绑包、用户 - 物品、捆绑包 - 物品的交互图
         # self.graphs = [u_b_graph_train, u_i_graph, b_i_graph]
-        self.graphs = [u_b_graph_train, u_i_graph, b_i_graph, i_i_graph]
+        self.graphs = [u_b_graph_train, u_i_graph, b_i_graph, i_i_graph, w_b_i_graph]
 
         # 创建训练集的数据加载器
         self.train_loader = DataLoader(self.bundle_train_data, batch_size=batch_size_train, shuffle=True, num_workers=10, drop_last=True)
@@ -182,6 +187,36 @@ class Datasets():
         with open(os.path.join(self.path, self.name, '{}_data_size.txt'.format(name)), 'r') as f:
             # 读取文件中的数据大小信息，并转换为整数列表，取前三个值
             return [int(s) for s in f.readline().split('\t')][:3]
+    
+
+    def get_item_popularity(self):
+        # 打开物品流行度信息文件
+        with open(os.path.join(self.path, self.name, 'item_popularity.txt'), 'r') as f:
+            # 读取文件中的流行度信息，并转换为字典
+            item_popularity = {int(line.split()[0]): float(line.split()[1]) for line in f.readlines()}
+        return item_popularity
+
+    # 获取使用流行度增强的捆绑包 - 物品的交互对和交互图
+    def get_bi_weighted(self):
+        # 打开捆绑包 - 物品交互信息文件
+        with open(os.path.join(self.path, self.name, 'bundle_item.txt'), 'r') as f:
+            # 读取文件中的交互对信息，并转换为元组列表
+            b_i_pairs = list(map(lambda s: tuple(int(i) for i in s[:-1].split('\t')), f.readlines()))
+
+        # 将交互对信息转换为 numpy 数组
+        indice = np.array(b_i_pairs, dtype=np.int32)
+        # # 创建一个全为 1 的值数组，表示交互存在
+        # values = np.ones(len(b_i_pairs), dtype=np.float32)
+        # 使用物品流行度作为边的权重，如果缺少流行度，设置为2
+        values = np.array([self.item_popularity.get(item_id, 2.0) for _, item_id in b_i_pairs], dtype=np.float32)
+        # 创建稀疏矩阵表示捆绑包 - 物品的交互图
+        b_i_graph = sp.coo_matrix(
+            (values, (indice[:, 0], indice[:, 1])), shape=(self.num_bundles, self.num_items)).tocsr()
+
+        # 打印捆绑包 - 物品交互图的统计信息
+        print_statistics(b_i_graph, 'Weighted-B-I statistics')
+
+        return b_i_pairs, b_i_graph
 
     # 获取捆绑包 - 物品的交互对和交互图
     def get_bi(self):
@@ -254,7 +289,7 @@ class Datasets():
             (int(parts[0]), int(parts[1]), float(parts[2]))
             for line in lines
             for parts in [line[:-1].split(' ')]
-            if float(parts[2]) in self.item_relation_types
+            if float(parts[2]) in self.item_relation_types #只使用指定的类型边，抛弃其他边类型
         ]
 
         # 分离数据
