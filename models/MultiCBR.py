@@ -105,6 +105,10 @@ class MultiCBR(nn.Module):
         # 生成用于测试的无丢弃的传播图
         self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
 
+        #注意 修改所有图时要注意同时修改训练用图和测试用图！！！
+        #注意 修改所有图时要注意同时修改训练用图和测试用图！！！
+        #注意 修改所有图时要注意同时修改训练用图和测试用图！！！
+        
         # self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
         self.UI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph))
         self.UI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph))
@@ -125,11 +129,11 @@ class MultiCBR(nn.Module):
         self.UI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
 
         # self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
-        # self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
-        # self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
+        self.BI_propagation_graph = self.get_propagation_graph(self.w_bi_graph, self.conf["BI_ratio"])
+        self.BI_aggregation_graph = self.get_aggregation_graph(self.w_bi_graph, self.conf["BI_ratio"])
 
-        self.BI_propagation_graph = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
-        self.BI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
+        # self.BI_propagation_graph = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
+        # self.BI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
 
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
         self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 需要转置
@@ -493,15 +497,17 @@ class MultiCBR(nn.Module):
                     positive_features = F.normalize(self.items_feature[positive_samples], p=2, dim=1)
                     negative_features = F.normalize(self.items_feature[negative_samples], p=2, dim=1)
 
+                    # 根据公式计算 P(i+ | u) 相关部分
                     positive_scores = torch.sum(item_feature * positive_features, dim=1)
                     negative_scores = torch.sum(item_feature * negative_features, dim=1)
+                    exp_positive_scores = torch.exp(positive_scores)
+                    exp_negative_scores = torch.exp(negative_scores)
+                    denominator = exp_positive_scores + torch.sum(exp_negative_scores)
+                    p_i_plus_u = exp_positive_scores / denominator
 
-                    positive_scores = torch.exp(positive_scores / self.c_temp)
-                    negative_scores = torch.exp(negative_scores / self.c_temp)
-
-                    total_scores = torch.cat([positive_scores, negative_scores])
-                    ii_loss = - torch.mean(torch.log(positive_scores / total_scores.sum()))
-                    total_loss += ii_loss
+                    # 根据公式构建损失函数
+                    loss = -torch.mean(torch.log(p_i_plus_u))
+                    total_loss += loss
                     valid_items_count += 1
 
         if valid_items_count == 0:
@@ -522,7 +528,7 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 0  # 可根据需要调整 k 的值
+        k = 20  # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
