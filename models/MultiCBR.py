@@ -145,6 +145,8 @@ class MultiCBR(nn.Module):
         elif self.conf['aug_type'] == "Noise":
             self.init_noise_eps()
 
+        self.item_relations = self.load_item_relations()
+        
     # 初始化模态丢弃层
     def init_md_dropouts(self):
         # 初始化用户 - 捆绑包图的丢弃层
@@ -467,6 +469,25 @@ class MultiCBR(nn.Module):
 
         return c_loss
 
+    def load_item_relations(self):
+        item_relations = {}
+        with open('datasets/cold/NetEase/item_item_new_123.txt', 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                parts = line[:-1].split(' ')
+                item1 = int(parts[0])
+                item2 = int(parts[1])
+                relation_type = float(parts[2])
+                if relation_type == 1 or relation_type == 3:
+                    if item1 not in item_relations:
+                        item_relations[item1] = {'positive': [], 'negative': []}
+                    item_relations[item1]['positive'].append(item2)
+        all_items = set(range(self.num_items))
+        for item in item_relations:
+            positive_items = set(item_relations[item]['positive'])
+            negative_items = all_items - positive_items - {item}
+            item_relations[item]['negative'] = list(negative_items)
+        return item_relations
 
     def cal_ii_single_item_loss(self, k):
         # 从所有物品中随机抽取 k 个物品
@@ -476,39 +497,36 @@ class MultiCBR(nn.Module):
         valid_items_count = 0
 
         for item in random_items:
-            # 从 ii_graph 中获取当前物品的正样本
-            positive_samples = self.ii_graph[item].nonzero()[1]
-            num_positive = len(positive_samples)
+            if item in self.item_relations:
+                # 获取当前物品的正样本
+                positive_samples = self.item_relations[item]['positive']
+                num_positive = len(positive_samples)
 
-            if num_positive > 0:
-                # 获取所有物品的索引
-                all_items = np.arange(self.num_items)
-                # 排除当前物品和正样本，得到负样本候选集
-                negative_candidates = np.setdiff1d(all_items, np.append(item, positive_samples))
+                if num_positive > 0:
+                    # 获取当前物品的负样本
+                    negative_candidates = self.item_relations[item]['negative']
 
-                if len(negative_candidates) >= num_positive:
-                    # 从负样本候选集中随机选择与正样本数量相同的负样本
-                    negative_samples = np.random.choice(negative_candidates, num_positive, replace=False)
+                    if len(negative_candidates) >= num_positive:
+                        # 从负样本候选集中随机选择与正样本数量相同的负样本
+                        negative_samples = np.random.choice(negative_candidates, num_positive, replace=False)
 
-                    positive_samples = torch.tensor(positive_samples, device=self.device)
-                    negative_samples = torch.tensor(negative_samples, device=self.device)
+                        positive_samples = torch.tensor(positive_samples, device=self.device)
+                        negative_samples = torch.tensor(negative_samples, device=self.device)
 
-                    item_feature = F.normalize(self.items_feature[item], p=2, dim=0)
-                    positive_features = F.normalize(self.items_feature[positive_samples], p=2, dim=1)
-                    negative_features = F.normalize(self.items_feature[negative_samples], p=2, dim=1)
+                        item_feature = F.normalize(self.items_feature[item], p=2, dim=0)
+                        positive_features = F.normalize(self.items_feature[positive_samples], p=2, dim=1)
+                        negative_features = F.normalize(self.items_feature[negative_samples], p=2, dim=1)
 
-                    # 根据公式计算 P(i+ | u) 相关部分
-                    positive_scores = torch.sum(item_feature * positive_features, dim=1)
-                    negative_scores = torch.sum(item_feature * negative_features, dim=1)
-                    exp_positive_scores = torch.exp(positive_scores)
-                    exp_negative_scores = torch.exp(negative_scores)
-                    denominator = exp_positive_scores + torch.sum(exp_negative_scores)
-                    p_i_plus_u = exp_positive_scores / denominator
+                        positive_scores = torch.sum(item_feature * positive_features, dim=1)
+                        negative_scores = torch.sum(item_feature * negative_features, dim=1)
 
-                    # 根据公式构建损失函数
-                    loss = -torch.mean(torch.log(p_i_plus_u))
-                    total_loss += loss
-                    valid_items_count += 1
+                        positive_scores = torch.exp(positive_scores / self.c_temp)
+                        negative_scores = torch.exp(negative_scores / self.c_temp)
+
+                        total_scores = torch.cat([positive_scores, negative_scores])
+                        ii_loss = - torch.mean(torch.log(positive_scores / total_scores.sum()))
+                        total_loss += ii_loss
+                        valid_items_count += 1
 
         if valid_items_count == 0:
             return torch.tensor(0.0, device=self.device)
@@ -532,7 +550,7 @@ class MultiCBR(nn.Module):
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
-        c_losses = [u_view_cl, b_view_cl, ii_single_item_loss]
+        c_losses = [u_view_cl, b_view_cl, 0.5*ii_single_item_loss]
 
         # 计算平均对比损失
         c_loss = sum(c_losses) / len(c_losses)
