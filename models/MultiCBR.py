@@ -471,14 +471,14 @@ class MultiCBR(nn.Module):
 
     def load_item_relations(self):
         item_relations = {}
-        with open('datasets/cold/NetEase/item_item_new_123.txt', 'r') as f:
+        with open('II_matrix_all_but_5.txt', 'r') as f:
             lines = f.readlines()
             for line in lines:
                 parts = line[:-1].split(' ')
                 item1 = int(parts[0])
                 item2 = int(parts[1])
                 relation_type = float(parts[2])
-                if relation_type == 1 or relation_type == 3:
+                if relation_type == 1:
                     if item1 not in item_relations:
                         item_relations[item1] = {'positive': [], 'negative': []}
                     item_relations[item1]['positive'].append(item2)
@@ -546,12 +546,12 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 20  # 可根据需要调整 k 的值
+        k = 0  # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
-        c_losses = [u_view_cl, b_view_cl, 0.5*ii_single_item_loss]
-
+        # c_losses = [u_view_cl, b_view_cl, 0.5*ii_single_item_loss]
+        c_losses = [u_view_cl, b_view_cl]
         # 计算平均对比损失
         c_loss = sum(c_losses) / len(c_losses)
 
