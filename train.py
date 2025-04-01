@@ -364,7 +364,7 @@ def get_recall(pred, grd, is_hit, topk):
     hit_cnt = is_hit.sum(dim=1)
     # 计算每个样本的真实正样本数量
     num_pos = grd.sum(dim=1)
-    num_pos = torch.tensor(num_pos, device=torch.device('cuda'))
+    num_pos = num_pos.clone().detach().to(torch.device('cuda'))
     # 移除那些没有真实正样本的测试样本（避免除零错误）
     # 分母为总样本数减去没有正样本的样本数
     denorm = pred.shape[0] - (num_pos == 0).sum().item()

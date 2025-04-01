@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import scipy.sparse as sp 
 from scipy.sparse import csr_matrix, vstack , diags
+import random
 
 # 计算 BPR（Bayesian Personalized Ranking）损失
 def cal_bpr_loss(pred):
@@ -47,7 +48,7 @@ def to_tensor(graph):
     # 提取非零元素的行索引和列索引
     indices = np.vstack((graph.row, graph.col))
     # 创建 PyTorch 稀疏浮点张量
-    graph = torch.sparse.FloatTensor(torch.LongTensor(indices), torch.FloatTensor(values), torch.Size(graph.shape))
+    graph = torch.sparse_coo_tensor(torch.LongTensor(indices), torch.FloatTensor(values), torch.Size(graph.shape))
 
     return graph
 
@@ -105,6 +106,10 @@ class MultiCBR(nn.Module):
         # 生成用于测试的无丢弃的传播图
         self.UB_propagation_graph_ori = self.get_propagation_graph(self.ub_graph)
 
+        #注意 修改所有图时要注意同时修改训练用图和测试用图！！！
+        #注意 修改所有图时要注意同时修改训练用图和测试用图！！！
+        #注意 修改所有图时要注意同时修改训练用图和测试用图！！！
+        
         # self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
         self.UI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph))
         self.UI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph))
@@ -125,11 +130,11 @@ class MultiCBR(nn.Module):
         self.UI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
 
         # self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
-        # self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
-        # self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
-
         self.BI_propagation_graph = self.get_propagation_graph(self.w_bi_graph, self.conf["BI_ratio"])
         self.BI_aggregation_graph = self.get_aggregation_graph(self.w_bi_graph, self.conf["BI_ratio"])
+
+        # self.BI_propagation_graph = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
+        # self.BI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
 
         self.UB_aggregation_graph = self.get_aggregation_graph(self.ub_graph, self.conf["UB_ratio"])
         self.BU_aggregation_graph = torch.transpose(self.UB_aggregation_graph, 0, 1) ## 需要转置
@@ -141,6 +146,8 @@ class MultiCBR(nn.Module):
         elif self.conf['aug_type'] == "Noise":
             self.init_noise_eps()
 
+        self.item_relations = self.load_item_relations()
+        
     # 初始化模态丢弃层
     def init_md_dropouts(self):
         # 初始化用户 - 捆绑包图的丢弃层
@@ -463,6 +470,29 @@ class MultiCBR(nn.Module):
 
         return c_loss
 
+    def load_item_relations(self):
+        ## 加载数据
+        all_items = set(range(self.num_items))
+        item_relations = {item: {'positive': [], 'negative': []} for item in all_items}
+
+        with open('datasets/cold/NetEase/item_item_new_123.txt', 'r') as f:
+            positive_pairs = [
+                (int(parts[0]), int(parts[1]))
+                for line in f
+                for parts in [line[:-1].split(' ')]
+                if float(parts[2]) == 1 or float(parts[2]) == 2##为什么3会爆炸？
+            ]
+
+        for item1, item2 in positive_pairs:
+            item_relations[item1]['positive'].append(item2)
+
+        for item in item_relations:
+            positive_items = set(item_relations[item]['positive'])
+            negative_candidates = all_items - positive_items - {item}
+            # 随机选取 50 个元素，如果候选元素不足 50 个，则选取所有候选元素
+            item_relations[item]['negative'] = random.sample(negative_candidates, min(50, len(negative_candidates)))
+
+        return item_relations
 
     def cal_ii_single_item_loss(self, k):
         # 从所有物品中随机抽取 k 个物品
@@ -472,37 +502,36 @@ class MultiCBR(nn.Module):
         valid_items_count = 0
 
         for item in random_items:
-            # 从 ii_graph 中获取当前物品的正样本
-            positive_samples = self.ii_graph[item].nonzero()[1]
-            num_positive = len(positive_samples)
+            if item in self.item_relations:
+                # 获取当前物品的正样本
+                positive_samples = self.item_relations[item]['positive']
+                num_positive = len(positive_samples)
 
-            if num_positive > 0:
-                # 获取所有物品的索引
-                all_items = np.arange(self.num_items)
-                # 排除当前物品和正样本，得到负样本候选集
-                negative_candidates = np.setdiff1d(all_items, np.append(item, positive_samples))
+                if num_positive > 0:
+                    # 获取当前物品的负样本
+                    negative_candidates = self.item_relations[item]['negative']
 
-                if len(negative_candidates) >= num_positive:
-                    # 从负样本候选集中随机选择与正样本数量相同的负样本
-                    negative_samples = np.random.choice(negative_candidates, num_positive, replace=False)
+                    if len(negative_candidates) >= num_positive:
+                        # 从负样本候选集中随机选择与正样本数量相同的负样本
+                        negative_samples = np.random.choice(negative_candidates, num_positive, replace=False)
 
-                    positive_samples = torch.tensor(positive_samples, device=self.device)
-                    negative_samples = torch.tensor(negative_samples, device=self.device)
+                        positive_samples = torch.tensor(positive_samples, device=self.device)
+                        negative_samples = torch.tensor(negative_samples, device=self.device)
 
-                    item_feature = F.normalize(self.items_feature[item], p=2, dim=0)
-                    positive_features = F.normalize(self.items_feature[positive_samples], p=2, dim=1)
-                    negative_features = F.normalize(self.items_feature[negative_samples], p=2, dim=1)
+                        item_feature = F.normalize(self.items_feature[item], p=2, dim=0)
+                        positive_features = F.normalize(self.items_feature[positive_samples], p=2, dim=1)
+                        negative_features = F.normalize(self.items_feature[negative_samples], p=2, dim=1)
 
-                    positive_scores = torch.sum(item_feature * positive_features, dim=1)
-                    negative_scores = torch.sum(item_feature * negative_features, dim=1)
+                        positive_scores = torch.sum(item_feature * positive_features, dim=1)
+                        negative_scores = torch.sum(item_feature * negative_features, dim=1)
 
-                    positive_scores = torch.exp(positive_scores / self.c_temp)
-                    negative_scores = torch.exp(negative_scores / self.c_temp)
+                        positive_scores = torch.exp(positive_scores / self.c_temp)
+                        negative_scores = torch.exp(negative_scores / self.c_temp)
 
-                    total_scores = torch.cat([positive_scores, negative_scores])
-                    ii_loss = - torch.mean(torch.log(positive_scores / total_scores.sum()))
-                    total_loss += ii_loss
-                    valid_items_count += 1
+                        total_scores = torch.cat([positive_scores, negative_scores])
+                        ii_loss = - torch.mean(torch.log(positive_scores / total_scores.sum()))
+                        total_loss += ii_loss
+                        valid_items_count += 1
 
         if valid_items_count == 0:
             return torch.tensor(0.0, device=self.device)
@@ -522,11 +551,11 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 0  # 可根据需要调整 k 的值
+        k = 20  # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
-        c_losses = [u_view_cl, b_view_cl, ii_single_item_loss]
+        c_losses = [u_view_cl, b_view_cl, 0.5*ii_single_item_loss]
 
         # 计算平均对比损失
         c_loss = sum(c_losses) / len(c_losses)

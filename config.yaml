@@ -27,7 +27,7 @@ NetEase:
     BI_layer: [0.4, 0.4, 0.2] # layer aggregation coefficients in BI graph
     II_layer: [1.0, 0.0, 0.0]
 
-  lrs: [1.0e-3] # learning rate
+  lrs: [5.0e-4] # learning rate
   l2_regs: [1.0e-5] # the l2 regularization weight: lambda_2
   c_lambdas: [0.5] # the contrastive loss weight: lambda_1
   c_temps: [0.2] # the temperature in the contrastive loss: tau
