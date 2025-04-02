@@ -189,7 +189,8 @@ def main():
                 loss_scalar = loss.detach()
                 bpr_loss_scalar = bpr_loss.detach()
                 c_loss_scalar = c_loss.detach()
-                ii_c_loss_scalar = ii_c_loss.detach()
+                # ii_c_loss_scalar = ii_c_loss.detach()
+                ii_c_loss_scalar = 0
                 # 将损失信息写入 TensorBoard
                 run.add_scalar("loss_bpr", bpr_loss_scalar, batch_anchor)
                 run.add_scalar("loss_c", c_loss_scalar, batch_anchor)

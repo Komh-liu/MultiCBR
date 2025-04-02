@@ -1,5 +1,5 @@
 NetEase:
-  data_path: './datasets/cold'
+  data_path: './datasets'
   batch_size_train: 2048 # the batch size for training
   batch_size_test: 2048 # the batch size for testing
   topk: [10, 20, 40, 80] # the topks metrics for evaluation
@@ -19,24 +19,24 @@ NetEase:
   fusion_weights:
     # fusion weight for representations of different graphs
     # From the first element to the third element are weight for UB, UI, BI graphs correspondingly.
-    # modal_weight: [0.5, 0.2, 0.3]
-    modal_weight: [0.0, 0.4, 0.6] ##//lyh change
+    modal_weight: [0.5, 0.2, 0.3]
+    # modal_weight: [0.0, 0.4, 0.6] ##//lyh change
     # layer aggregation weights, the i-th element in the list represents the weight of the (i-1)-th propagation layer.
     UB_layer: [0.35, 0.15, 0.5] # layer aggregation coefficients in UB graph
     UI_layer: [0.25, 0.65, 0.1] # layer aggregation coefficients in UI graph
     BI_layer: [0.4, 0.4, 0.2] # layer aggregation coefficients in BI graph
     II_layer: [1.0, 0.0, 0.0]
 
-  lrs: [5.0e-4] # learning rate
+  lrs: [1.0e-3] # learning rate
   l2_regs: [1.0e-5] # the l2 regularization weight: lambda_2
-  c_lambdas: [0.5] # the contrastive loss weight: lambda_1
+  c_lambdas: [0.1] # the contrastive loss weight: lambda_1
   c_temps: [0.2] # the temperature in the contrastive loss: tau
 
   interaction_threshold: 20 # for new bpr
 
   item_relation_types: [2,3] #only use high ui with low bi
 
-  epochs: 30 # number of epochs to train
+  epochs: 50 # number of epochs to train
   test_interval: 5 # by how many epochs to run the validation and testing.
 
 

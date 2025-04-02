@@ -146,7 +146,7 @@ class MultiCBR(nn.Module):
         elif self.conf['aug_type'] == "Noise":
             self.init_noise_eps()
 
-        self.item_relations = self.load_item_relations()
+        # self.item_relations = self.load_item_relations()
         
     # 初始化模态丢弃层
     def init_md_dropouts(self):
@@ -402,14 +402,6 @@ class MultiCBR(nn.Module):
         #  =============================  II graph propagation  =============================
         propagated_items_feature = self.propagate_ii(self.II_propagation_graph, self.items_feature, self.II_layer_coefs, test)
 
-        #  =============================  UB graph propagation  =============================
-        if test:
-            # 在测试阶段，使用无丢弃的传播图进行传播
-            UB_users_feature, UB_bundles_feature = self.propagate(self.UB_propagation_graph_ori, self.users_feature, self.bundles_feature, "UB", self.UB_layer_coefs, test)
-        else:
-            # 在训练阶段，使用带有丢弃的传播图进行传播
-            UB_users_feature, UB_bundles_feature = self.propagate(self.UB_propagation_graph, self.users_feature, self.bundles_feature, "UB", self.UB_layer_coefs, test)
-
         #  =============================  UI graph propagation  =============================
         if test:
             # 在测试阶段，使用无丢弃的传播图进行传播
@@ -432,6 +424,14 @@ class MultiCBR(nn.Module):
             BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, UI_bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
             # 训练阶段使用带丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph, BI_items_feature, "UI", test)
+
+        #  =============================  UB graph propagation  =============================
+        if test:
+            # 在测试阶段，使用无丢弃的传播图进行传播
+            UB_users_feature, UB_bundles_feature = self.propagate(self.UB_propagation_graph_ori, self.users_feature, UI_bundles_feature, "UB", self.UB_layer_coefs, test)
+        else:
+            # 在训练阶段，使用带有丢弃的传播图进行传播
+            UB_users_feature, UB_bundles_feature = self.propagate(self.UB_propagation_graph, self.users_feature, UI_bundles_feature, "UB", self.UB_layer_coefs, test)
         
         # 收集三种图传播得到的用户特征
         users_feature = [UB_users_feature, UI_users_feature, BI_users_feature]
@@ -475,7 +475,7 @@ class MultiCBR(nn.Module):
         all_items = set(range(self.num_items))
         item_relations = {item: {'positive': [], 'negative': []} for item in all_items}
 
-        with open('datasets/cold/NetEase/item_item_new_123.txt', 'r') as f:
+        with open('datasets/cold/NetEase/II_matrix_all_but5.txt', 'r') as f:
             positive_pairs = [
                 (int(parts[0]), int(parts[1]))
                 for line in f
@@ -490,7 +490,7 @@ class MultiCBR(nn.Module):
             positive_items = set(item_relations[item]['positive'])
             negative_candidates = all_items - positive_items - {item}
             # 随机选取 50 个元素，如果候选元素不足 50 个，则选取所有候选元素
-            item_relations[item]['negative'] = random.sample(negative_candidates, min(50, len(negative_candidates)))
+            item_relations[item]['negative'] = random.sample(negative_candidates, min(100, len(negative_candidates)))
 
         return item_relations
 
@@ -551,8 +551,9 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 20  # 可根据需要调整 k 的值
-        ii_single_item_loss = self.cal_ii_single_item_loss(k)
+        k = 0  # 可根据需要调整 k 的值
+        # ii_single_item_loss = self.cal_ii_single_item_loss(k)
+        ii_single_item_loss = 0 
 
         # 存储对比损失
         c_losses = [u_view_cl, b_view_cl, 0.5*ii_single_item_loss]
