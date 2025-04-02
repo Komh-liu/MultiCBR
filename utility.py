@@ -281,7 +281,8 @@ class Datasets():
 
     def get_ii(self):
         # 打开物品 - 物品交互信息文件
-        with open(os.path.join(self.path, self.name, 'item.txt'), 'r') as f:
+        # with open(os.path.join(self.path, self.name, 'item.txt'), 'r') as f:
+        with open('iiloss.txt', 'r') as f:
             lines = f.readlines()
         
         # 使用列表推导式一次性处理所有行

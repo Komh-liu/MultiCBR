@@ -1,5 +1,5 @@
 NetEase:
-  data_path: './datasets'
+  data_path: './datasets/cold'
   batch_size_train: 2048 # the batch size for training
   batch_size_test: 2048 # the batch size for testing
   topk: [10, 20, 40, 80] # the topks metrics for evaluation
@@ -37,7 +37,7 @@ NetEase:
 
   item_relation_types: [2,3] #only use high ui with low bi
 
-  epochs: 50 # number of epochs to train
+  epochs: 30 # number of epochs to train
   test_interval: 5 # by how many epochs to run the validation and testing.
 
 

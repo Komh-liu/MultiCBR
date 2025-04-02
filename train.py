@@ -179,7 +179,7 @@ def main():
                 # 前向传播计算损失
                 bpr_loss, c_loss, ii_c_loss = model(batch, ED_drop=ED_drop)
                 # 计算总损失
-                loss = bpr_loss + conf["c_lambda"] * c_loss + ii_c_loss
+                loss = bpr_loss + conf["c_lambda"] * c_loss
                 # 反向传播计算梯度
                 loss.backward()
                 # 更新模型参数
