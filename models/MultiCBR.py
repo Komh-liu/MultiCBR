@@ -214,7 +214,8 @@ class MultiCBR(nn.Module):
 
         # 将模态融合权重转换为 PyTorch 张量
         modal_coefs = torch.FloatTensor(self.fusion_weights['modal_weight'])
-        # 将用户 - 捆绑包图层融合权重转换为 PyTorch 张量
+        modal_coefs_cold = torch.FloatTensor(self.fusion_weights['modal_weight_cold'])
+
         UB_layer_coefs = torch.FloatTensor(self.fusion_weights['UB_layer'])
         # 将用户 - 物品图层融合权重转换为 PyTorch 张量
         UI_layer_coefs = torch.FloatTensor(self.fusion_weights['UI_layer'])
@@ -225,6 +226,7 @@ class MultiCBR(nn.Module):
 
         # 扩展模态融合权重的维度并移动到指定设备
         self.modal_coefs = modal_coefs.unsqueeze(-1).unsqueeze(-1).to(self.device)
+        self.modal_coefs_cold = modal_coefs_cold.unsqueeze(-1).unsqueeze(-1).to(self.device)
 
         # 扩展用户 - 捆绑包图层融合权重的维度并移动到指定设备
         self.UB_layer_coefs = UB_layer_coefs.unsqueeze(0).unsqueeze(-1).to(self.device)
@@ -390,73 +392,53 @@ class MultiCBR(nn.Module):
         return aggregated_feature
 
     # 融合用户和捆绑包的特征
-    def fuse_users_bundles_feature(self, users_feature, bundles_feature):
+    def fuse_users_bundles_feature(self, users_feature, bundles_feature, cold=False):
         # 将用户特征堆叠起来
         users_feature = torch.stack(users_feature, dim=0)
         # 将捆绑包特征堆叠起来
         bundles_feature = torch.stack(bundles_feature, dim=0)
-
-        # 模态聚合，根据模态融合权重对用户特征进行加权求和
-        users_rep = torch.sum(users_feature * self.modal_coefs, dim=0)
-        # 模态聚合，根据模态融合权重对捆绑包特征进行加权求和
-        bundles_rep = torch.sum(bundles_feature * self.modal_coefs, dim=0)
+        if cold:
+            # 模态聚合，根据模态融合权重对用户特征进行加权求和
+            users_rep = torch.sum(users_feature * self.modal_coefs_cold, dim=0)
+            # 模态聚合，根据模态融合权重对捆绑包特征进行加权求和
+            bundles_rep = torch.sum(bundles_feature * self.modal_coefs_cold, dim=0)
+        else :
+            # 模态聚合，根据模态融合权重对用户特征进行加权求和
+            users_rep = torch.sum(users_feature * self.modal_coefs, dim=0)
+            # 模态聚合，根据模态融合权重对捆绑包特征进行加权求和
+            bundles_rep = torch.sum(bundles_feature * self.modal_coefs, dim=0)
 
         return users_rep, bundles_rep
 
     
-    def get_multi_modal_representations(self, test=False, users=None, bundles=None):#train时随机训练，test时区分冷热
+    def get_multi_modal_representations(self, test=False):#train时随机训练，test时区分冷热
         if test:
-            cold_start_indices = []
-            hot_start_indices = []
-            cold_start_bundles = []
-            hot_start_bundles = []
+            cold_indices = []
+            for i in range(self.num_bundles):
+                if self.bundle_interaction_counts.get(i, 0) < self.cold_start_threshold:
+                    cold_indices.append(i)
 
-            for i, bundle in enumerate(bundles):
-                interaction_count = self.bundle_interaction_counts.get(str(bundle), 0)
-                if interaction_count < self.cold_start_threshold:
-                    cold_start_indices.append(i)
-                    cold_start_bundles.append(bundle)
-                else:
-                    hot_start_indices.append(i)
-                    hot_start_bundles.append(bundle)
+            cold_indices = torch.tensor(cold_indices, dtype=torch.long).to(self.device)
+            # 获取热启动的所有用户和捆绑包的嵌入
+            all_users_rep, all_bundles_rep = self.get_multi_modal_representations_hot(test) 
 
-            if cold_start_bundles:
-                cold_start_users = users[cold_start_indices]
-                cold_start_users = torch.tensor(cold_start_users).to(self.device)
-                cold_start_bundles = torch.tensor(cold_start_bundles).to(self.device)
-                cold_start_users_rep, cold_start_bundles_rep = self._get_multi_modal_representations(cold_start_users, cold_start_bundles, test)
-            else:
-                cold_start_users_rep, cold_start_bundles_rep = None, None
+            if cold_indices.numel() > 0:
+                # 获取冷启动捆绑包的嵌入
+                _, cold_bundles_rep = self.get_multi_modal_representations_cold(test)
+                # 用冷启动捆绑包的嵌入替换热启动嵌入中对应的部分
+                all_bundles_rep[cold_indices] = cold_bundles_rep[cold_indices]
 
-            if hot_start_bundles:
-                hot_start_users = users[hot_start_indices]
-                hot_start_users = torch.tensor(hot_start_users).to(self.device)
-                hot_start_bundles = torch.tensor(hot_start_bundles).to(self.device)
-                hot_start_users_rep, hot_start_bundles_rep = self.get_multi_modal_representations_ori(hot_start_users, hot_start_bundles, test)
-            else:
-                hot_start_users_rep, hot_start_bundles_rep = None, None
-
-            users_rep = torch.empty((len(users), cold_start_users_rep.shape[1]) if cold_start_users_rep is not None else (len(users), hot_start_users_rep.shape[1])).to(self.device)
-            bundles_rep = torch.empty((len(bundles), cold_start_bundles_rep.shape[1]) if cold_start_bundles_rep is not None else (len(bundles), hot_start_bundles_rep.shape[1])).to(self.device)
-
-            if cold_start_users_rep is not None:
-                users_rep[cold_start_indices] = cold_start_users_rep
-                bundles_rep[cold_start_indices] = cold_start_bundles_rep
-            if hot_start_users_rep is not None:
-                users_rep[hot_start_indices] = hot_start_users_rep
-                bundles_rep[hot_start_indices] = hot_start_bundles_rep
-
-            return users_rep, bundles_rep
+                return all_users_rep, all_bundles_rep
         else:
             # 训练时随机选择一个流程
             if random.random() < 0.5:
-                return self._get_multi_modal_representations(users, bundles, test)
+                return self.get_multi_modal_representations_hot()
             else:
-                return self.get_multi_modal_representations_ori(users, bundles, test)
+                return self.get_multi_modal_representations_cold()
 
 
     # 获取多模态表示
-    def _get_multi_modal_representations(self, test=False):
+    def get_multi_modal_representations_cold(self, test=False): #这是用在冷启动流程
         #  =============================  II graph propagation  =============================
         propagated_items_feature = self.propagate_ii(self.II_propagation_graph, self.items_feature, self.II_layer_coefs, test)
 
@@ -482,26 +464,18 @@ class MultiCBR(nn.Module):
             BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, UI_bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
             # 训练阶段使用带丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph, BI_items_feature, "UI", test)
-
-        #  =============================  UB graph propagation  =============================
-        if test:
-            # 在测试阶段，使用无丢弃的传播图进行传播
-            UB_users_feature, UB_bundles_feature = self.propagate(self.UB_propagation_graph_ori, self.users_feature, UI_bundles_feature, "UB", self.UB_layer_coefs, test)
-        else:
-            # 在训练阶段，使用带有丢弃的传播图进行传播
-            UB_users_feature, UB_bundles_feature = self.propagate(self.UB_propagation_graph, self.users_feature, UI_bundles_feature, "UB", self.UB_layer_coefs, test)
         
         # 收集三种图传播得到的用户特征
-        users_feature = [UB_users_feature, UI_users_feature, BI_users_feature]
+        users_feature = [UI_users_feature, BI_users_feature]
         # 收集三种图传播得到的捆绑包特征
-        bundles_feature = [UB_bundles_feature, UI_bundles_feature, BI_bundles_feature]
+        bundles_feature = [UI_bundles_feature, BI_bundles_feature]
         # 融合不同图得到的用户和捆绑包特征
-        users_rep, bundles_rep = self.fuse_users_bundles_feature(users_feature, bundles_feature)
+        users_rep, bundles_rep = self.fuse_users_bundles_feature(users_feature, bundles_feature, cold=True)
 
         return users_rep, bundles_rep
 
     # 获取多模态表示
-    def get_multi_modal_representations_ori(self, test=False):
+    def get_multi_modal_representations_hot(self, test=False):  #这是用在热启动流程
         #  =============================  II graph propagation  =============================
         propagated_items_feature = self.propagate_ii(self.II_propagation_graph, self.items_feature, self.II_layer_coefs, test)
 
