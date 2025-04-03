@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import json
 import random
 import numpy as np
 import scipy.sparse as sp 
@@ -47,19 +48,19 @@ class BundleTrainDataset(Dataset):
         self.b_b_for_neg_sample = b_b_for_neg_sample
 
         # 计算每个捆绑包的交互量
-        self.bundle_interaction_counts = self.calculate_bundle_interaction_counts()
+        self.bundle_interaction_counts = self.load_bundle_interaction_counts()
         # 筛选高交互量的捆绑包 用来计算bpr
         self.high_interaction_bundles = [bundle for bundle, count in self.bundle_interaction_counts.items() if count > self.conf["interaction_threshold"]]
 
-    def calculate_bundle_interaction_counts(self):
-        bundle_interaction_counts = {}
-        for user, bundle in self.u_b_pairs:
-            if bundle in bundle_interaction_counts:
-                bundle_interaction_counts[bundle] += 1
-            else:
-                bundle_interaction_counts[bundle] = 1
-        return bundle_interaction_counts
-
+    def load_bundle_interaction_counts(self):
+        data_path = self.conf['data_path']
+        dataset_name = self.conf['dataset']
+        json_path = os.path.join(data_path, dataset_name, "bundle_interaction_counts.json")
+        if os.path.exists(json_path):
+            with open(json_path, 'r') as f:
+                return json.load(f)
+        return {}
+    
     # 根据索引获取一个样本
     def __getitem__(self, index):
         conf = self.conf
@@ -167,7 +168,6 @@ class Datasets():
         self.bundle_test_data = BundleTestDataset(u_b_pairs_test, u_b_graph_test, u_b_graph_train, self.num_users, self.num_bundles)
 
         # 存储用户 - 捆绑包、用户 - 物品、捆绑包 - 物品的交互图
-        # self.graphs = [u_b_graph_train, u_i_graph, b_i_graph]
         self.graphs = [u_b_graph_train, u_i_graph, b_i_graph, i_i_graph, w_b_i_graph]
 
         # 创建训练集的数据加载器
@@ -176,6 +176,18 @@ class Datasets():
         self.val_loader = DataLoader(self.bundle_val_data, batch_size=batch_size_test, shuffle=False, num_workers=20)
         # 创建测试集的数据加载器
         self.test_loader = DataLoader(self.bundle_test_data, batch_size=batch_size_test, shuffle=False, num_workers=20)
+
+        # 计算每个捆绑包的交互量
+        self.bundle_interaction_counts = self.load_bundle_interaction_counts()
+
+    def load_bundle_interaction_counts(self):
+        data_path = self.path
+        dataset_name = self.name
+        json_path = os.path.join(data_path, dataset_name, "bundle_interaction_counts.json")
+        if os.path.exists(json_path):
+            with open(json_path, 'r') as f:
+                return json.load(f)
+        return {}
 
     # 获取数据的基本信息，如用户数、捆绑包数和物品数
     def get_data_size(self):

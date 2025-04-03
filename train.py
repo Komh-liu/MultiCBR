@@ -137,7 +137,7 @@ def main():
 
         # 根据配置信息创建模型
         if conf['model'] == 'MultiCBR':
-            model = MultiCBR(conf, dataset.graphs).to(device)
+            model = MultiCBR(conf, dataset.graphs, dataset.bundle_interaction_counts).to(device)
         else:
             raise ValueError("Unimplemented model %s" % (conf["model"]))
 

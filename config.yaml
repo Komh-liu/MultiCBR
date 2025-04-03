@@ -36,6 +36,8 @@ NetEase:
 
   item_relation_types: [2,3] #only use high ui with low bi
 
+  cold_start_threshold: 6
+
   epochs: 50 # number of epochs to train
   test_interval: 5 # by how many epochs to run the validation and testing.
 
