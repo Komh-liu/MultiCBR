@@ -478,7 +478,7 @@ class MultiCBR(nn.Module):
                 item1 = int(parts[0])
                 item2 = int(parts[1])
                 relation_type = float(parts[2])
-                if relation_type == 1 or relation_type == 2:
+                if relation_type == 3:## 已经尝试多种1 2配无效果 接下来尝试 1 和 3
                     if item1 not in item_relations:
                         item_relations[item1] = {'positive': [], 'negative': []}
                     item_relations[item1]['positive'].append(item2)
@@ -554,7 +554,8 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 2048  # 可根据需要调整 k 的值
+        k = 90
+        # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
