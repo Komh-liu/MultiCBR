@@ -1,5 +1,5 @@
 NetEase:
-  data_path: './datasets/cold'
+  data_path: './datasets'
   batch_size_train: 2048 # the batch size for training
   batch_size_test: 2048 # the batch size for testing
   topk: [10, 20, 40, 80] # the topks metrics for evaluation
@@ -20,7 +20,7 @@ NetEase:
     # fusion weight for representations of different graphs
     # From the first element to the third element are weight for UB, UI, BI graphs correspondingly.
     # modal_weight: [0.5, 0.2, 0.3]
-    modal_weight: [0.0, 0.4, 0.6] ##//lyh change
+    modal_weight: [0.9, 0, 0.1] ##//lyh change
     # layer aggregation weights, the i-th element in the list represents the weight of the (i-1)-th propagation layer.
     UB_layer: [0.35, 0.15, 0.5] # layer aggregation coefficients in UB graph
     UI_layer: [0.25, 0.65, 0.1] # layer aggregation coefficients in UI graph
@@ -28,9 +28,9 @@ NetEase:
     II_layer: [1.0, 0.0, 0.0]
 
   # lrs: [1.0e-3] # learning rate before
-  lrs: [5.0e-4] # learning rate
+  lrs: [1.0e-3] # learning rate
   l2_regs: [1.0e-5] # the l2 regularization weight: lambda_2
-  c_lambdas: [0.5] # the contrastive loss weight: lambda_1
+  c_lambdas: [0.05] # the contrastive loss weight: lambda_1
   c_temps: [0.2] # the temperature in the contrastive loss: tau
 
   interaction_threshold: 20 # for new bpr
@@ -63,10 +63,11 @@ iFashion:
     UB_layer: [0.5, 0.5, 0.0]
     UI_layer: [0.3, 0.2, 0.5]
     BI_layer: [0.5, 0.5, 0.0]
+    II_layer: [1.0, 0.0, 0.0]
 
   lrs: [1.0e-3]
   l2_regs: [1.0e-5]
-  c_lambdas: [0.1]
+  c_lambdas: [0.5]
   c_temps: [0.2]
 
   interaction_threshold: 20 # for new bpr
@@ -95,14 +96,15 @@ Youshu:
   BI_ratios: [0.1]
 
   fusion_weights:
-    modal_weight: [0, 0.3, 0.7]
+    modal_weight: [0, 0.25, 0.75]
     UB_layer: [0.7, 0.2, 0.1]
     UI_layer: [0.6, 0.2, 0.2]
     BI_layer: [0.6, 0.1, 0.3]
+    II_layer: [1.0, 0.0, 0.0]
 
   lrs: [1.0e-3]
   l2_regs: [1.0e-5]
-  c_lambdas: [0.04]
+  c_lambdas: [0.5]
   c_temps: [0.23]
 
   interaction_threshold: 20 # for new bpr

@@ -554,7 +554,7 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 90
+        k = 20
         # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
@@ -571,7 +571,7 @@ class MultiCBR(nn.Module):
         # 边缘丢弃可以按批次或按轮次进行，由训练循环控制
         if ED_drop:
             # 重新生成用户 - 捆绑包图的传播图
-            self.UB_propagation_graph = self.get_propagation_graph(self.H_iub, self.conf["UB_ratio"])
+            self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
             # 重新生成用户 - 物品图的传播图
             self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
             # 重新生成用户 - 物品图的聚合图
