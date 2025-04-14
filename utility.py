@@ -298,7 +298,7 @@ class Datasets():
         values = np.array([relation_type for _, _, relation_type in data])
 
         # 使用 numpy 条件赋值修改值
-        para = [0.2,0.5,1]
+        para = [0,0,1]
         values = np.where(values == 1, para[0], values)#bi高
         values = np.where(values == 2, para[1], values)#ui高bi低
         values = np.where(values == 3, para[2], values)
