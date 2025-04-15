@@ -580,7 +580,7 @@ class MultiCBR(nn.Module):
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
-        c_losses = [u_view_cl, b_view_cl, 0.5*ii_single_item_loss]
+        c_losses = [u_view_cl, b_view_cl, 0.1*ii_single_item_loss]
         # c_losses = [u_view_cl, b_view_cl]
         # 计算平均对比损失
         c_loss = sum(c_losses) / len(c_losses)
