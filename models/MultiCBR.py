@@ -110,10 +110,10 @@ class MultiCBR(nn.Module):
         #注意 修改所有图时要注意同时修改训练用图和测试用图！！！
         
         # self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
-        # self.UI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph))
-        # self.UI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph))
-        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
-        self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
+        self.UI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph))
+        self.UI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph))
+        # self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
+        # self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
 
         # self.BI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph))
         # self.BI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph))
@@ -125,10 +125,10 @@ class MultiCBR(nn.Module):
         self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
 
         # self.UI_propagation_graph = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph, self.conf["UI_ratio"])
-        self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
-        self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
-        # self.UI_propagation_graph = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
-        # self.UI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
+        # self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
+        # self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
+        self.UI_propagation_graph = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
+        self.UI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
 
         # self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
         self.BI_propagation_graph = self.get_propagation_graph(self.w_bi_graph, self.conf["BI_ratio"])
@@ -400,9 +400,6 @@ class MultiCBR(nn.Module):
 
     # 获取多模态表示
     def get_multi_modal_representations(self, test=False):
-        #  =============================  II graph propagation  =============================
-        propagated_items_feature = self.propagate_ii(self.II_propagation_graph, self.items_feature, self.II_layer_coefs, test)
-
         #  =============================  UB graph propagation  =============================
         if test:
             # 在测试阶段，使用无丢弃的传播图进行传播
@@ -556,12 +553,14 @@ class MultiCBR(nn.Module):
         # 计算捆绑包视角的对比损失
         b_view_cl = self.cal_c_loss(bundles_feature, bundles_feature)
         # 计算IIgraph的对比损失
-        k = 90
+        k = 0
         # 可根据需要调整 k 的值
         ii_single_item_loss = self.cal_ii_single_item_loss(k)
 
         # 存储对比损失
-        c_losses = [u_view_cl, b_view_cl, 0.5*ii_single_item_loss]
+        # c_losses = [u_view_cl, b_view_cl, 0.5*ii_single_item_loss]
+        c_losses = [u_view_cl, b_view_cl]
+
 
         # 计算平均对比损失
         c_loss = sum(c_losses) / len(c_losses)

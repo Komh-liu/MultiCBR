@@ -27,17 +27,17 @@ NetEase:
     BI_layer: [0.4, 0.4, 0.2] # layer aggregation coefficients in BI graph
     II_layer: [1.0, 0.0, 0.0]
 
-  # lrs: [1.0e-3] # learning rate before
-  lrs: [5.0e-4] # learning rate
+  lrs: [1.0e-3] # learning rate before
+  # lrs: [5.0e-4] # learning rate
   l2_regs: [1.0e-5] # the l2 regularization weight: lambda_2
   c_lambdas: [0.05] # the contrastive loss weight: lambda_1
   c_temps: [0.2] # the temperature in the contrastive loss: tau
 
-  interaction_threshold: 20 # for new bpr
+  interaction_threshold: 0 # for new bpr
 
   item_relation_types: [2,3] #only use high ui with low bi
 
-  epochs: 30 # number of epochs to train
+  epochs: 50 # number of epochs to train
   test_interval: 5 # by how many epochs to run the validation and testing.
 
 

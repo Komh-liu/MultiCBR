@@ -68,17 +68,24 @@ class BundleTrainDataset(Dataset):
         # 初始化一个列表，用于存储正样本和负样本捆绑包
         all_bundles = [pos_bundle]
 
-        # 进行负采样
-        user_interacted_bundles = set(self.u_b_graph[user_b].nonzero()[1])
-        possible_neg_bundles = [bundle for bundle in self.high_interaction_bundles if bundle not in user_interacted_bundles]
+        # # 进行负采样
+        # user_interacted_bundles = set(self.u_b_graph[user_b].nonzero()[1])
+        # possible_neg_bundles = [bundle for bundle in self.high_interaction_bundles if bundle not in user_interacted_bundles]
 
-        if len(possible_neg_bundles) < self.neg_sample:
-            # 如果可用的负样本不足，从所有未交互的捆绑包中采样
-            all_non_interacted_bundles = [bundle for bundle in range(self.num_bundles) if bundle not in user_interacted_bundles]
-            possible_neg_bundles = all_non_interacted_bundles
+        # if len(possible_neg_bundles) < self.neg_sample:
+        #     # 如果可用的负样本不足，从所有未交互的捆绑包中采样
+        #     all_non_interacted_bundles = [bundle for bundle in range(self.num_bundles) if bundle not in user_interacted_bundles]
+        #     possible_neg_bundles = all_non_interacted_bundles
 
-        neg_bundles = np.random.choice(possible_neg_bundles, self.neg_sample, replace=False)
-        all_bundles.extend(neg_bundles)
+        # neg_bundles = np.random.choice(possible_neg_bundles, self.neg_sample, replace=False)
+        # all_bundles.extend(neg_bundles)
+
+        while True:
+            i = np.random.randint(self.num_bundles)
+            if self.u_b_graph[user_b, i] == 0 and not i in all_bundles:                                                          
+                all_bundles.append(i)                                                                                                   
+                if len(all_bundles) == self.neg_sample+1:                                                                               
+                    break      
 
         # 将用户索引和捆绑包索引转换为 PyTorch 的 LongTensor 类型并返回
         return torch.LongTensor([user_b]), torch.LongTensor(all_bundles)
