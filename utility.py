@@ -318,4 +318,8 @@ class Datasets():
         # 打印物品 - 物品交互图的统计信息
         print_statistics(i_i_graph, 'I-I statistics')
 
+        has_zero_edges = np.any(i_i_graph.data == 0)
+        if has_zero_edges:
+            raise ValueError(f"发现无效零值边！")
+
         return i_i_graph

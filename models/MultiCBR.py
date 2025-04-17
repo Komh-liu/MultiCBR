@@ -110,29 +110,29 @@ class MultiCBR(nn.Module):
         #注意 修改所有图时要注意同时修改训练用图和测试用图！！！
         
         # self.UI_propagation_graph_ori = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph)
-        self.UI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph))
-        self.UI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph))
-        # self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
-        # self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
+        # self.UI_propagation_graph_ori = self.get_propagation_graph(self.multiply_and_normalize(self.ui_graph,self.ii_graph))
+        # self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.multiply_and_normalize(self.ui_graph,self.ii_graph))
+        self.UI_propagation_graph_ori = self.get_propagation_graph(self.ui_graph)
+        self.UI_aggregation_graph_ori = self.get_aggregation_graph(self.ui_graph)
 
         # self.BI_propagation_graph_ori = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph))
         # self.BI_aggregation_graph_ori = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph))
-        self.BI_propagation_graph_ori = self.get_propagation_graph(self.w_bi_graph)
-        self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.w_bi_graph)
+        self.BI_propagation_graph_ori = self.get_propagation_graph(self.bi_graph)
+        self.BI_aggregation_graph_ori = self.get_aggregation_graph(self.bi_graph)
 
         # 生成用于训练的带有配置丢弃率的传播图
         # 如果增强类型是 OP 或 MD，这些图将与上面的相同
         self.UB_propagation_graph = self.get_propagation_graph(self.ub_graph, self.conf["UB_ratio"])
 
         # self.UI_propagation_graph = self.get_propagation_graph_with_ii(self.ui_graph, self.ii_graph, self.conf["UI_ratio"])
-        # self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
-        # self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
-        self.UI_propagation_graph = self.get_propagation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
-        self.UI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.ui_graph@self.ii_graph), self.conf["UI_ratio"])
+        self.UI_propagation_graph = self.get_propagation_graph(self.ui_graph, self.conf["UI_ratio"])
+        self.UI_aggregation_graph = self.get_aggregation_graph(self.ui_graph, self.conf["UI_ratio"])
+        # self.UI_propagation_graph = self.get_propagation_graph(self.multiply_and_normalize(self.ui_graph,self.ii_graph), self.conf["UI_ratio"])
+        # self.UI_aggregation_graph = self.get_aggregation_graph(self.multiply_and_normalize(self.ui_graph,self.ii_graph), self.conf["UI_ratio"])
 
         # self.BI_propagation_graph = self.get_propagation_graph_with_ii(self.bi_graph, self.ii_graph, self.conf["BI_ratio"])
-        self.BI_propagation_graph = self.get_propagation_graph(self.w_bi_graph, self.conf["BI_ratio"])
-        self.BI_aggregation_graph = self.get_aggregation_graph(self.w_bi_graph, self.conf["BI_ratio"])
+        self.BI_propagation_graph = self.get_propagation_graph(self.bi_graph, self.conf["BI_ratio"])
+        self.BI_aggregation_graph = self.get_aggregation_graph(self.bi_graph, self.conf["BI_ratio"])
 
         # self.BI_propagation_graph = self.get_propagation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
         # self.BI_aggregation_graph = self.get_aggregation_graph(laplace_transform(self.bi_graph@self.ii_graph), self.conf["BI_ratio"])
@@ -229,6 +229,33 @@ class MultiCBR(nn.Module):
         self.BI_layer_coefs = BI_layer_coefs.unsqueeze(0).unsqueeze(-1).to(self.device)
         # 扩展物品 - 物品图层融合权重的维度并移动到指定设备
         self.II_layer_coefs = II_layer_coefs.unsqueeze(0).unsqueeze(-1).to(self.device)
+
+    # def multiply_and_normalize(self, x_i_graph, ii_graph):
+    #     # 进行矩阵乘法
+    #     multiplied_graph = x_i_graph @ ii_graph
+
+    #     # 将矩阵中所有值置为 1
+    #     multiplied_graph.data = np.ones_like(multiplied_graph.data)
+
+    #     # 进行 Laplace 归一化
+    #     normalized_graph = laplace_transform(multiplied_graph)
+
+    #     return normalized_graph
+
+    def multiply_and_normalize(self, x_i_graph, ii_graph, default_value=0.0):
+        # 1. 确保 x_i_graph 边权为 1（如果原始边权不是 1，需要先二值化）
+        x_i_binary = x_i_graph.copy()
+        x_i_binary.data = np.ones_like(x_i_binary.data)  # 确保原始边权为 1
+        
+        # 2. 计算乘积矩阵（U×I）@（I×I）= U×I，非零值设为默认值
+        multiplied_csr = x_i_graph @ ii_graph
+        multiplied_csr.data = np.full_like(multiplied_csr.data, default_value)  # 关键：直接赋值data
+        
+        # 3. 矩阵相加（利用 CSR 加法的高效合并）
+        combined_csr = multiplied_csr + x_i_binary  # 自动合并相同位置的元素
+        
+        # 4. Laplace 归一化（优化 CSR 路径）
+        return laplace_transform(combined_csr)
 
     def get_propagation_graph_with_ii(self, bipartite_graph, ii_graph, modification_ratio=0):
         # 获取设备信息
@@ -422,12 +449,12 @@ class MultiCBR(nn.Module):
         #  =============================  BI graph propagation  =============================
         if test:
             # 测试阶段使用无丢弃的传播图进行捆绑包 - 物品图的传播
-            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph_ori, self.bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
+            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph_ori, UI_bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
             # 测试阶段使用无丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph_ori, BI_items_feature, "UI", test)
         else:
             # 训练阶段使用带丢弃的传播图进行捆绑包 - 物品图的传播
-            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, self.bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
+            BI_bundles_feature, BI_items_feature = self.propagate(self.BI_propagation_graph, UI_bundles_feature, self.items_feature, "BI", self.BI_layer_coefs, test)
             # 训练阶段使用带丢弃的聚合图从物品特征聚合得到用户特征
             BI_users_feature = self.aggregate(self.UI_aggregation_graph, BI_items_feature, "UI", test)
         
